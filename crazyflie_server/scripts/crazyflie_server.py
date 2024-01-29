@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import rospy
 
-from geometry_msgs.msg import  Twist
+from geometry_msgs.msg import  Twist, Vector3
 
 import cflib
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.utils import uri_helper
+from crazyflie_msgs.msg import CrazyflieLog
 
 class CrazyflieServerNode:
     def __init__(self):
@@ -16,6 +17,9 @@ class CrazyflieServerNode:
         # Initializing crazyflie
         cflib.crtp.init_drivers()
         self._cf = Crazyflie()
+
+        self.vel_flag = False
+        self.thrust_flag = False
 
         # Crazyflie connection callbacks
         self._cf.connected.add_callback(self._connected)
@@ -47,27 +51,40 @@ class CrazyflieServerNode:
         self.pose_subscriber = rospy.Subscriber(f"cmd_vel", 
                                                 Twist, 
                                                 self.publish_twist)
+        
+        # Publishers for different sets of data
+        self.pub_log = rospy.Publisher('crazyflieLog', CrazyflieLog, queue_size=10)
+
+        self.timer = rospy.Timer(rospy.Duration(1.0/60.0), self._send_log_data)
 
     def _connected(self, link_uri):
         """ This callback is called form the Crazyflie API when a Crazyflie
         has been connected and the TOCs have been downloaded."""
         rospy.loginfo(f'Crazyflie {link_uri} connected!')
 
-        self._lg_vel = LogConfig(name='velocity in the drone frame', period_in_ms=1000/65)
+        self._lg_vel = LogConfig(name='velocity in the drone frame', period_in_ms=1000/60)
         self._lg_vel.add_variable('stateEstimate.vx', 'float')
         self._lg_vel.add_variable('stateEstimate.vy', 'float')
         self._lg_vel.add_variable('stateEstimate.vz', 'float')
         self._lg_vel.add_variable('stateEstimate.z', 'float')
-        self._lg_vel.add_variable('stateEstimate.yaw', 'float')
+        self._lg_vel.add_variable('stateEstimate.pitch', 'float')
+        self._lg_vel.add_variable('stateEstimate.roll', 'float')
 
+        self._lg_thrust = LogConfig(name='thrust', period_in_ms=1000/60)
+        self._lg_thrust.add_variable('stabilizer.thrust', 'float')
+        
         try:
             self._cf.log.add_config(self._lg_vel)
+            self._cf.log.add_config(self._lg_thrust)
             # This callback will receive the data
             self._lg_vel.data_received_cb.add_callback(self._vel_log_data)
+            self._lg_thrust.data_received_cb.add_callback(self._thrust_data)
             # This callback will be called on errors
             self._lg_vel.error_cb.add_callback(self._vel_log_error)
+            self._lg_thrust.error_cb.add_callback(self._vel_log_error)
             # Start the logging
             self._lg_vel.start()
+            self._lg_thrust.start()
         except KeyError as e:
             print('Could not start log configuration,'
                   '{} not found in TOC'.format(str(e)))
@@ -92,13 +109,46 @@ class CrazyflieServerNode:
         """Callback from the log API when an error occurs"""
         print('Error when logging %s: %s' % (logconf.name, msg))
 
+    def _thrust_log_error(self, logconf, msg):
+        """Callback from the log API when an error occurs"""
+        print('Error when logging %s: %s' % (logconf.name, msg))
+
     def _vel_log_data(self, timestamp, data, logconf):
         """Callback from a the log API when data arrives"""
-        # print(f'[{timestamp}][{logconf.name}]: ', end='')
-        for name, value in data.items():
-            print(f'{name}: {value:3.3f} ', end='')
-            pass
-        print('\n')
+        if not self.vel_flag:
+            rospy.loginfo("Velocity log started")
+            self.vel_flag = True
+
+        self.vx = data.get('stateEstimate.vx', 0)
+        self.vy = data.get('stateEstimate.vy', 0)
+        self.vz = data.get('stateEstimate.vz', 0)
+        self.z = data.get('stateEstimate.z', 0)  
+        self.pitch = data.get('stateEstimate.pitch', 0)
+        self.roll = data.get('stateEstimate.roll', 0)
+
+    def _thrust_data(self, timestamp, data, logconf):
+        """Callback from a the log API when data arrives"""
+        if not self.thrust_flag:
+            rospy.loginfo("Thrust log started")
+            self.thrust_flag = True
+        self.thrust = data.get('stabilizer.thrust', 0)
+
+    def _send_log_data(self, event):
+        if self.vel_flag and self.thrust_flag:
+            log_msg = CrazyflieLog()
+
+            timestamp = rospy.Time.now().to_sec()
+            log_msg.timestamp = timestamp
+
+            log_msg.vx = self.vx
+            log_msg.vy = self.vy    
+            log_msg.vz = self.vz
+            log_msg.z = self.z
+            log_msg.pitch = self.pitch
+            log_msg.roll = self.roll
+            log_msg.thrust = self.thrust
+
+            self.pub_log.publish(log_msg)
 
     def publish_twist(self, msg):        
         roll = msg.linear.y

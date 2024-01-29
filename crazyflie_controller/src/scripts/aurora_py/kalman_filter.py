@@ -8,10 +8,10 @@ class KalmanFilter:
         self.C = np.array(C)
         self.D = np.array(D)
         self.Ts = Ts
-        self.Rw = np.array(Rw)
-        self.Rv = np.array(Rv)
-        self.state_estimate = np.array(initial_state)
-        self.error_covariance = np.array(initial_error_covariance)
+        self.Rw = np.array(Rw) # Process noise covariance
+        self.Rv = np.array(Rv) # Measurement noise covariance
+        self.state_estimate = np.array(initial_state) # Initial state estimate
+        self.error_covariance = np.array(initial_error_covariance) # Initial error covariance
 
     def update(self, measurement, control_input):
         measurement = np.array(measurement)

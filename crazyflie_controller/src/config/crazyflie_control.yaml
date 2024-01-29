@@ -1,8 +1,8 @@
 dont_takeoff: False
 print_kalman: False
-print_controller: True
+print_controller: False
 
-theta_trim: -1.8768106841432017
-phi_trim: 0.2882582418517803
+theta_trim: 0.0
+phi_trim: 0.0
 
-uri: "radio://0/50/2M/E7E7E7E708"
+uri: "radio://0/20/2M/E7E7E7E705"

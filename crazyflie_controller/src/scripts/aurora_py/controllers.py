@@ -143,10 +143,17 @@ class CrazyflieController:
 class FeedForwardLQR():
     def __init__(self, A, B, C, D, Q, R):    
         # FeedForward
+        A=np.array(A)
+        B=np.array(B)
+        C=np.array(C)
+        D=np.array(D)
+        Q=np.array(Q)
+        R=np.array(R)
+        
         A_ffw = np.vstack((np.hstack((A, B)), np.hstack((C, D))))
-        Nx_Nu = np.dot(np.linalg.pinv(A_ffw), np.vstack([np.zeros((6, 6)), np.eye(6)]))
-        self.Nx = Nx_Nu[:6, :]
-        self.Nu = Nx_Nu[6:, :]
+        Nx_Nu = np.dot(np.linalg.pinv(A_ffw), np.vstack([np.zeros((A.shape[0], B.shape[1])), np.eye(B.shape[1])]))
+        self.Nx = Nx_Nu[:len(A), :]
+        self.Nu = Nx_Nu[len(A):, :]
         
         # Full-State Feedback Gain
         self.K, _, _ = control.lqr(A, B, Q, R)
