@@ -1,5 +1,5 @@
 dont_takeoff: False
-print_kalman: False
+print_kalman: True
 print_controller: False
 
 theta_trim: 0.0
