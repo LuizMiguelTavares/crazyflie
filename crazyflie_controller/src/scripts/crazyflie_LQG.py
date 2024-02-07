@@ -24,11 +24,6 @@ class CrazyflieLQRNode:
         ############## Crazyflie Model ############
         self.m = 0.035  # mass of the drone in kg
         self.g = 9.81  # gravity
-        # kvx = 0.03
-        # kvy = 0.04
-        kvx = 0.0
-        kvy = 0.0
-        kvz = 0
 
         self.ang_max = 15
         self.circle_flag = False
@@ -46,16 +41,16 @@ class CrazyflieLQRNode:
         self.A = np.array([[0, 0, 0, 1, 0, 0],
                            [0, 0, 0, 0, 1, 0],
                            [0, 0, 0, 0, 0, 1],
-                           [0, 0, 0, -kvx/self.m, 0, 0],
-                           [0, 0, 0, 0, -kvy/self.m, 0],
-                           [0, 0, 0, 0, 0, -kvz/self.m]])
+                           [0, 0, 0, 0, 0, 0],
+                           [0, 0, 0, 0, 0, 0],
+                           [0, 0, 0, 0, 0, 0]])
         
         self.A_kalman = np.array([[0, 0, 0, 1, 0, 0],
                            [0, 0, 0, 0, 1, 0],
                            [0, 0, 0, 0, 0, 1],
-                           [0, 0, 0, -kvx/self.m, 0, 0],
-                           [0, 0, 0, 0, -kvy/self.m, 0],
-                           [0, 0, 0, 0, 0, -kvz/self.m]])
+                           [0, 0, 0, 0, 0, 0],
+                           [0, 0, 0, 0, 0, 0],
+                           [0, 0, 0, 0, 0, 0]])
 
         self.B = np.array([[0, 0, 0],
                            [0, 0, 0],

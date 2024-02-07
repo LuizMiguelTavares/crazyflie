@@ -11,6 +11,7 @@ import rosbag
 
 import numpy as np
 import tf.transformations as tf_trans
+from threading import Lock
 
 from sensor_msgs.msg import Joy
 
@@ -26,12 +27,12 @@ class CrazyflieLQRNode:
         self.g = 9.81  # gravity
         self.Kp = 1 # Proportional gain
         kvx = 0.03 
-        kvy = 0.04
+        kvy = 0.03
         kvz = 0
 
         self.Kvx, self.Kvy, self.Kvz = kvx, kvy, kvz
 
-        self.ang_max = 15
+        self.ang_max = rospy.get_param('~ang_max', 15.0)
         self.circle_flag = False
         self.psi_ref_max = 100
         self.desired_z_height = 1
@@ -41,7 +42,7 @@ class CrazyflieLQRNode:
         self.theta_trim = rospy.get_param('~theta_trim', 0.0)
         self.phi_trim = rospy.get_param('~phi_trim', 0.0)
         self.print_controller = rospy.get_param('~print_controller', False)
-        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/LQG_kalman_data2.bag', 'w')
+        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/LQG_kalman_data_hvel20_angmax_30.bag', 'w')
 
         # Matrices A, B, C, D
         self.A = np.array([[-kvx/self.m, 0, 0],
@@ -59,39 +60,39 @@ class CrazyflieLQRNode:
         self.D = np.zeros((self.C.shape[0], self.B.shape[1]))
 
         # LQR Matricies
-        self.Q = np.array([[2, 0, 0],
-                            [0, 2, 0],
-                            [0, 0, 1]])
+        self.Q = np.array([[10, 0, 0],
+                            [0, 10, 0],
+                            [0, 0, 3]])
         
         self.R = np.array([[20, 0, 0],
                            [0, 20, 0],
-                           [0, 0, 40]])
+                           [0, 0, 30]])
 
         ############## Kalman Filter ##########################
         # Parameters
         r_xyz = 0.01
-        r_xyz_dot = 0.01
+        r_xyz_dot = 0.1
         r_optitrack = 0.5
         r_flow_deck = 0.1
 
         # model uncertainty
         self.Rw = np.block([
-            [r_xyz**2 * np.eye(3), np.zeros((3, 3))],
-            [np.zeros((3, 3)), r_xyz_dot**2 * np.eye(3)]
+            [r_xyz * np.eye(3), np.zeros((3, 3))],
+            [np.zeros((3, 3)), r_xyz_dot * np.eye(3)]
         ])
 
         # measurement uncertainty
         self.Rv = np.block([
-            [r_optitrack**2 * np.eye(3), np.zeros((3, 3))],
-            [np.zeros((3, 3)), r_flow_deck**2 * np.eye(3)]
+            [r_optitrack * np.eye(3), np.zeros((3, 3))],
+            [np.zeros((3, 3)), r_flow_deck * np.eye(3)]
         ])
 
-        self.initial_error_covariance = np.array([[0.001, 0, 0, 0, 0, 0],
-                                                  [0, 0.001, 0, 0, 0, 0],
-                                                  [0, 0, 0.001, 0, 0, 0],
-                                                  [0, 0, 0, 0.001, 0, 0],
-                                                  [0, 0, 0, 0, 0.001, 0],
-                                                  [0, 0, 0, 0, 0, 0.001]])
+        self.initial_error_covariance = np.array([[0.0, 0, 0, 0, 0, 0],
+                                                  [0, 0.0, 0, 0, 0, 0],
+                                                  [0, 0, 0.0, 0, 0, 0],
+                                                  [0, 0, 0, 0.0, 0, 0],
+                                                  [0, 0, 0, 0, 0.0, 0],
+                                                  [0, 0, 0, 0, 0, 0.0]])
         ########################################################
 
         # Flags
@@ -141,6 +142,7 @@ class CrazyflieLQRNode:
         self.wait_rate = rospy.Rate(2)
         self.timer = rospy.Timer(rospy.Duration(1/4), self.prints)
         self.bag_timer = rospy.Timer(rospy.Duration(self.hz), self.save_bag_timer)
+        self.bag_write_lock = Lock()
         self.is_bag_open = True
         rospy.on_shutdown(self.shutdown_hook)
         rospy.loginfo("Crazyflie LQR Node started")
@@ -154,11 +156,15 @@ class CrazyflieLQRNode:
         self.z = msg.z
         self.pitch = msg.pitch
         self.roll = msg.roll
+        self.yaw = msg.yaw
         self.true_thrust = msg.thrust
 
     def shutdown_hook(self):
-        self.is_bag_open = False
-        self.bag.close()
+        with self.bag_write_lock:
+            self.is_bag_open = False
+            if self.bag is not None:
+                self.bag.close()
+            rospy.loginfo("ROS bag closed safely.")
 
     def get_euler_from_quaternion(self, quaternion):
         return np.array(tf_trans.euler_from_quaternion([quaternion.x, quaternion.y, quaternion.z, quaternion.w]))
@@ -238,7 +244,8 @@ class CrazyflieLQRNode:
     
     def compute_controller(self):
         counter = 0
-        counter_loop = 0
+        kalman_flag = False
+        first_loop = True
         pose_old = None
         time_old = None
         
@@ -265,34 +272,61 @@ class CrazyflieLQRNode:
             pose = self.pose
             pose_time = self.pose_time
 
-            if counter_loop == 0:
+            if first_loop:
+                ### Takeoff
                 takeoff_time = rospy.Time.now()
+                self.desired_takeoff_pose = [self.pose[0], self.pose[1], self.pose[2]+self.desired_z_height, 0, 0, 0]
+
+                ### Kalman Filter
+                kalman_time = rospy.Time.now()
                 initial_state = np.array([pose[0], pose[1], pose[2], 0, 0, 0])
                 kalman_filter = EKF(initial_state, self.initial_error_covariance, self.hz, self.m, self.Kvx, self.Kvy, self.Kvz, self.Rw, self.Rv)
-                self.desired_takeoff_pose = [self.pose[0], self.pose[1], self.pose[2]+self.desired_z_height, 0, 0, 0]
                 self.state_estimate = initial_state
-                counter_loop +=1
 
-            # Compute velocity
-            if pose_old is not None:
-                dt = (pose_time - time_old).to_sec()
-                if dt == 0:
-                    self.rate.sleep()
-                    continue
-            
-                vel = (np.array([pose[0], pose[1], pose[2]]) 
-                        - np.array([pose_old[0], pose_old[1], pose_old[2]])) / dt
-                # ang_vel = (np.array([pose[3], pose[4], pose[5]]) 
-                #         - np.array([pose_old[3], pose_old[4], pose_old[5]])) / dt
-            else:
+                ### Velocity
                 vel = np.array([0.0, 0.0, 0.0])
-                # ang_vel = np.array([0.0, 0.0, 0.0])
-            
-            pose_old = pose
-            time_old = pose_time
+                vel_pose_old = pose
+                vel_time_old = pose_time
+
+                first_loop = False
 
             # Get the current timestamp
             current_time = rospy.Time.now()
+
+            ### Kalman Filter
+            elapsed_kalman_time = (current_time - kalman_time).to_sec()
+
+            if (elapsed_kalman_time >= self.hz) | (not kalman_flag):
+                kalman_time = current_time
+                
+                noise = 0.1
+                x_gaussian_error = pose[0] + np.random.normal(0, noise)
+                y_gaussian_error = pose[1] + np.random.normal(0, noise)
+                z_gaussian_error = pose[2] + np.random.normal(0, noise)
+
+                kalman_control_input_ = self.undo_conversions_crazyflie(self.pitch, self.roll, self.true_thrust)
+                self.kalman_control_input = np.array([kalman_control_input_[0], kalman_control_input_[1], pose[5], kalman_control_input_[2]])
+
+                self.position_with_gaussian_error = np.array([x_gaussian_error, y_gaussian_error, z_gaussian_error, self.vx, self.vy, self.vz])
+                try:
+                    self.state_estimate, self.kalman_gain = kalman_filter.update(self.position_with_gaussian_error, self.kalman_control_input)
+                except:
+                    pass
+                
+                if kalman_flag:
+                    # Compute velocity
+                    dt = (pose_time - vel_time_old).to_sec()
+                    if dt == 0:
+                        self.rate.sleep()
+                        continue
+                
+                    vel = (np.array([pose[0], pose[1], pose[2]]) 
+                            - np.array([vel_pose_old[0], vel_pose_old[1], vel_pose_old[2]])) / dt
+                    
+                    vel_pose_old = pose
+                    vel_time_old = pose_time
+
+                kalman_flag = True
 
             # Calculate elapsed time
             elapsed_time = (current_time - takeoff_time).to_sec()
@@ -301,7 +335,7 @@ class CrazyflieLQRNode:
             x_radius = 1
             y_radius = 1
 
-            if elapsed_time < 10:
+            if elapsed_time < 3:
                 psi_desired = 0
                 psi_dot_ref = 0
 
@@ -340,8 +374,8 @@ class CrazyflieLQRNode:
                 x_til = np.array([x, y, z]) - pose[:3]
                 desired = self.x_dot_ref(np.array([vx, vy, vz]), x_til)
 
-                psi_desired = np.arctan2(vy, vx)*0
-                psi_dot_ref = -angular_velocity*0
+                psi_desired = np.arctan2(vy, vx)
+                psi_dot_ref = angular_velocity
 
                 # ax = -x_radius * angular_velocity**2 * np.cos(angular_velocity * elapsed_time)
                 # ay = -y_radius * angular_velocity**2 * np.sin(angular_velocity * elapsed_time)
@@ -356,7 +390,11 @@ class CrazyflieLQRNode:
                 psi_dot_ref = 0
 
             self.pose_LQR = np.array([pose[0], pose[1], pose[2], vel[0], vel[1], vel[2]])
-            vel = np.array([vel[0], vel[1], vel[2]])
+            ### Vel optitrack
+            # vel = np.array([vel[0], vel[1], vel[2]])
+
+            ### Vel crazuflie
+            vel = np.array([self.vx, self.vy, self.vz])
 
             # Compute LQR controller
             rotation_matrix_theta_phi = np.array([[np.cos(pose[5]) , np.sin(pose[5])], 
@@ -365,17 +403,18 @@ class CrazyflieLQRNode:
             theta_phi = rotation_matrix_theta_phi @ np.array([vel[0], vel[1]])
             new_vel = np.array([theta_phi[0], theta_phi[1], vel[2]])
 
+
             new_desired = rotation_matrix_theta_phi @ np.array([desired[0], desired[1]])
-            desired = np.array([new_desired[0], new_desired[1], desired[2]])
+            self.reference_vel = np.array([new_desired[0], new_desired[1], desired[2]])
 
             ### LQG
             if self.circle_flag:
                 self.elapsed_circle_time = rospy.Time.now().to_sec() - self.circle_time
-                # theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(self.state_estimate, desired)
+                # theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(self.state_estimate, reference_vel)
                 self.desired = desired_position_velocity
-                theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(new_vel, desired)
+                theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(new_vel, self.reference_vel)
             else:
-                theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(new_vel, desired)
+                theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(new_vel, self.reference_vel)
 
             theta_ref, phi_ref, thrust_ref = self.conversions_crazyflie(theta_LQR, phi_LQR, thrust_LQR)
             psi_ref = self.compute_psi(psi_dot_ref, psi_desired)
@@ -384,21 +423,6 @@ class CrazyflieLQRNode:
             self.phi_ref = phi_ref + self.phi_trim
             self.psi_ref = psi_ref
             self.thrust_ref = thrust_ref
-
-            ### Kalman Filter
-            noise = 0.1
-            x_gaussian_error = self.pose_LQR[0] + np.random.normal(0, noise)
-            y_gaussian_error = self.pose_LQR[1] + np.random.normal(0, noise)
-            z_gaussian_error = self.pose_LQR[2] + np.random.normal(0, noise)
-
-            kalman_control_input_ = self.undo_conversions_crazyflie(theta_ref, phi_ref, thrust_ref)
-            self.kalman_control_input = np.array([kalman_control_input_[0], kalman_control_input_[1], pose[5], kalman_control_input_[2]])
-
-            self.position_with_gaussian_error = np.array([x_gaussian_error, y_gaussian_error, z_gaussian_error, self.vx, self.vy, self.vz])
-            try:
-                self.state_estimate, self.kalman_gain = kalman_filter.update(self.position_with_gaussian_error, self.kalman_control_input)
-            except:
-                pass
 
             self.compute_controller_is_true = True
 
@@ -419,59 +443,66 @@ class CrazyflieLQRNode:
             print(f'LQR_controller : {[float(np.round(val, 3)) for val in [self.theta_ref, self.phi_ref, self.psi_ref, self.thrust_ref/60000]]}')
 
     def save_bag_timer(self, req):
-        if not self.compute_controller_is_true:
-            return
-
-        if not self.is_bag_open:
+        if not self.compute_controller_is_true or not self.is_bag_open:
             return
         
-        if self.circle_flag:
-            ### time
-            time = Float32()
-            time.data = self.elapsed_circle_time
-            self.bag.write('time', time)
-            
-            ### state
-            pose_LQR_msg = Vector3()
-            pose_LQR_msg.x, pose_LQR_msg.y, pose_LQR_msg.z = self.pose_LQR[:3] 
-            self.bag.write('position_Optitrack', pose_LQR_msg)
-            vel_LQR_msg = Vector3()
-            vel_LQR_msg.x, vel_LQR_msg.y, vel_LQR_msg.z = self.pose_LQR[3:] 
-            self.bag.write('vel_Optitrack', vel_LQR_msg)
+        with self.bag_write_lock:
+            if self.circle_flag:
 
-            ### state estimate
-            position_estimate_msg = Vector3()
-            position_estimate_msg.x, position_estimate_msg.y, position_estimate_msg.z = self.state_estimate[:3]
-            self.bag.write('position_estimate_topic', position_estimate_msg)
-            vel_estimate_msg = Vector3()
-            vel_estimate_msg.x, vel_estimate_msg.y, vel_estimate_msg.z = self.state_estimate[3:]
-            self.bag.write('vel_estimate_topic', vel_estimate_msg)
+                if not self.is_bag_open:
+                    return
+        
+                ### time
+                time = Float32()
+                time.data = self.elapsed_circle_time
+                self.bag.write('time', time)
+                
+                ### state
+                pose_LQR_msg = Vector3()
+                pose_LQR_msg.x, pose_LQR_msg.y, pose_LQR_msg.z = self.pose_LQR[:3] 
+                self.bag.write('position_Optitrack', pose_LQR_msg)
+                vel_LQR_msg = Vector3()
+                vel_LQR_msg.x, vel_LQR_msg.y, vel_LQR_msg.z = self.pose_LQR[3:] 
+                self.bag.write('vel_Optitrack', vel_LQR_msg)
 
-            ### Desired
-            desired_position_msg = Vector3()
-            desired_position_msg.x, desired_position_msg.y, desired_position_msg.z = self.desired[:3]
-            self.bag.write('desired_position', desired_position_msg)
-            desired_vel_msg = Vector3()
-            desired_vel_msg.x, desired_vel_msg.y, desired_vel_msg.z = self.desired[3:]
-            self.bag.write('desired_vel', desired_vel_msg)
+                ### state estimate
+                position_estimate_msg = Vector3()
+                position_estimate_msg.x, position_estimate_msg.y, position_estimate_msg.z = self.state_estimate[:3]
+                self.bag.write('position_estimate_topic', position_estimate_msg)
+                vel_estimate_msg = Vector3()
+                vel_estimate_msg.x, vel_estimate_msg.y, vel_estimate_msg.z = self.state_estimate[3:]
+                self.bag.write('vel_estimate_topic', vel_estimate_msg)
 
-            ### Position with gaussian error
-            position_gaussian_error_msg = Vector3()
-            position_gaussian_error_msg.x, position_gaussian_error_msg.y, position_gaussian_error_msg.z = self.position_with_gaussian_error[:3]
-            self.bag.write('position_gaussian_error', position_gaussian_error_msg)
+                ### Desired
+                desired_position_msg = Vector3()
+                desired_position_msg.x, desired_position_msg.y, desired_position_msg.z = self.desired[:3]
+                self.bag.write('desired_position', desired_position_msg)
+                desired_vel_msg = Vector3()
+                desired_vel_msg.x, desired_vel_msg.y, desired_vel_msg.z = self.desired[3:]
+                self.bag.write('desired_vel', desired_vel_msg)
 
-            ### Control input ref
-            control_input_msg = Twist()
-            control_input_msg.linear.x, control_input_msg.linear.y, control_input_msg.angular.z, control_input_msg.linear.z = self.kalman_control_input
-            self.bag.write('control_input', control_input_msg)
+                ### Reference velocity
+                ref_vel_msg = Vector3()
+                ref_vel_msg.x, ref_vel_msg.y, ref_vel_msg.z = self.reference_vel
+                self.bag.write('reference_vel', ref_vel_msg)
 
-            ### Log
-            log_msg = self.Log_msg
-            self.bag.write('crazyflieLog', log_msg)   
+                ### Position with gaussian error
+                position_gaussian_error_msg = Vector3()
+                position_gaussian_error_msg.x, position_gaussian_error_msg.y, position_gaussian_error_msg.z = self.position_with_gaussian_error[:3]
+                self.bag.write('position_gaussian_error', position_gaussian_error_msg)
 
-            ### Optitrack
-            optitrack_msg = self.optitrack_pose
-            self.bag.write('optitrack_pose', optitrack_msg)   
+                ### Control input ref
+                control_input_msg = Twist()
+                control_input_msg.linear.x, control_input_msg.linear.y, control_input_msg.angular.z, control_input_msg.linear.z = self.kalman_control_input
+                self.bag.write('control_input', control_input_msg)
+
+                ### Log
+                log_msg = self.Log_msg
+                self.bag.write('crazyflieLog', log_msg)   
+
+                ### Optitrack
+                optitrack_msg = self.optitrack_pose
+                self.bag.write('optitrack_pose', optitrack_msg)   
 
     def handle_trajectory(self, req):
         self.compute_controller_flag = True
@@ -510,6 +541,8 @@ class CrazyflieLQRNode:
             pub_controller.angular.z = psi_ref
             if not self.dont_takeoff:
                 self.control_publish.publish(pub_controller)
+                pass
+
             self.rate.sleep()
 
 if __name__ == '__main__':

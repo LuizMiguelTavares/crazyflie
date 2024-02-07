@@ -159,7 +159,6 @@ class FeedForwardLQR():
         self.K, _, _ = control.lqr(A, B, Q, R)
 
     def compute_u(self, states, desired_states):
-
         u = self.Nu @ np.array(desired_states) - self.K @ (np.array(states) - self.Nx @ np.array(desired_states))
         theta, phi, thrust = u[0], u[1], u[2]
 
