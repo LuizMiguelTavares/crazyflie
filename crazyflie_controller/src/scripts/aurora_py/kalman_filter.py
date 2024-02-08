@@ -68,8 +68,8 @@ class ExtendedKalmanFilter:
         control_input = sp.Matrix([self.theta, self.phi, self.psi, self.t])
 
         # World frame dynamics
-        x_world = sp.cos(self.psi) * self.x_dot_body + sp.sin(self.psi) * self.y_dot_body
-        y_world = -sp.sin(self.psi) * self.x_dot_body + sp.cos(self.psi) * self.y_dot_body
+        x_world = sp.cos(self.psi) * self.x_dot_body - sp.sin(self.psi) * self.y_dot_body
+        y_world = sp.sin(self.psi) * self.x_dot_body + sp.cos(self.psi) * self.y_dot_body
         z_world = self.z_dot_body
         x_ddot_w = -self.Kvx / self.m * self.x_dot_body + self.t / self.m * sp.sin(self.theta)
         y_ddot_w = -self.Kvy / self.m * self.y_dot_body + self.t / self.m * sp.sin(self.phi)
@@ -113,8 +113,8 @@ class ExtendedKalmanFilter:
         theta, phi, psi, t = control_input
 
         # Calculate the world frame dynamics
-        x_world = np.cos(psi) * x_dot_body + np.sin(psi) * y_dot_body
-        y_world = -np.sin(psi) * x_dot_body + np.cos(psi) * y_dot_body
+        x_world = np.cos(psi) * x_dot_body - np.sin(psi) * y_dot_body
+        y_world = np.sin(psi) * x_dot_body + np.cos(psi) * y_dot_body
         z_world = z_dot_body
         x_ddot_w = -self.Kvx / self.m * x_dot_body + t / self.m * np.sin(theta)
         y_ddot_w = -self.Kvy / self.m * y_dot_body + t / self.m * np.sin(phi)

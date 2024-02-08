@@ -42,7 +42,7 @@ class CrazyflieLQRNode:
         self.theta_trim = rospy.get_param('~theta_trim', 0.0)
         self.phi_trim = rospy.get_param('~phi_trim', 0.0)
         self.print_controller = rospy.get_param('~print_controller', False)
-        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/LQG_kalman_data_hvel20_angmax_30.bag', 'w')
+        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/True_LQG1_05.bag', 'w')
 
         # Matrices A, B, C, D
         self.A = np.array([[-kvx/self.m, 0, 0],
@@ -69,23 +69,8 @@ class CrazyflieLQRNode:
                            [0, 0, 30]])
 
         ############## Kalman Filter ##########################
-        # Parameters
-        r_xyz = 0.01
-        r_xyz_dot = 0.1
-        r_optitrack = 0.5
-        r_flow_deck = 0.1
-
-        # model uncertainty
-        self.Rw = np.block([
-            [r_xyz * np.eye(3), np.zeros((3, 3))],
-            [np.zeros((3, 3)), r_xyz_dot * np.eye(3)]
-        ])
-
-        # measurement uncertainty
-        self.Rv = np.block([
-            [r_optitrack * np.eye(3), np.zeros((3, 3))],
-            [np.zeros((3, 3)), r_flow_deck * np.eye(3)]
-        ])
+        self.Rw = np.diag([0.01, 0.01, 0.01, 0.2, 0.2, 0.2])  # Process noise covariance
+        self.Rv = np.diag([0.8, 0.8, 0.01, 0.01, 0.01, 0.01])  # Measurement noise covariance
 
         self.initial_error_covariance = np.array([[0.0, 0, 0, 0, 0, 0],
                                                   [0, 0.0, 0, 0, 0, 0],
@@ -154,7 +139,7 @@ class CrazyflieLQRNode:
         self.vy = msg.vy
         self.vz = msg.vz
         self.z = msg.z
-        self.pitch = msg.pitch
+        self.pitch = -msg.pitch
         self.roll = msg.roll
         self.yaw = msg.yaw
         self.true_thrust = msg.thrust
@@ -242,6 +227,11 @@ class CrazyflieLQRNode:
     def x_dot_ref(self, x_dot_desired, x_til):
         return x_dot_desired + self.Kp*x_til
     
+    def rotation_world_to_body(self, orientation, vector):
+        R = np.array([[np.cos(orientation) , np.sin(orientation)], 
+                    [-np.sin(orientation), np.cos(orientation)]])
+        return np.dot(R, vector)
+    
     def compute_controller(self):
         counter = 0
         kalman_flag = False
@@ -299,15 +289,23 @@ class CrazyflieLQRNode:
             if (elapsed_kalman_time >= self.hz) | (not kalman_flag):
                 kalman_time = current_time
                 
-                noise = 0.1
+                noise = 0.2
                 x_gaussian_error = pose[0] + np.random.normal(0, noise)
                 y_gaussian_error = pose[1] + np.random.normal(0, noise)
-                z_gaussian_error = pose[2] + np.random.normal(0, noise)
+                z_gaussian_error = pose[2]
 
                 kalman_control_input_ = self.undo_conversions_crazyflie(self.pitch, self.roll, self.true_thrust)
-                self.kalman_control_input = np.array([kalman_control_input_[0], kalman_control_input_[1], pose[5], kalman_control_input_[2]])
 
-                self.position_with_gaussian_error = np.array([x_gaussian_error, y_gaussian_error, z_gaussian_error, self.vx, self.vy, self.vz])
+                yaw = self.yaw * np.pi/180
+                self.kalman_control_input = np.array([kalman_control_input_[0], kalman_control_input_[1], yaw, kalman_control_input_[2]])
+
+                vx_vy = np.array([self.vx, self.vy])
+
+
+
+                vx_vy_body = self.rotation_world_to_body(yaw, vx_vy)
+
+                self.position_with_gaussian_error = np.array([x_gaussian_error, y_gaussian_error, z_gaussian_error, vx_vy_body[0], vx_vy_body[1], self.vz])
                 try:
                     self.state_estimate, self.kalman_gain = kalman_filter.update(self.position_with_gaussian_error, self.kalman_control_input)
                 except:
@@ -360,16 +358,16 @@ class CrazyflieLQRNode:
                 vy = y_radius * angular_velocity * np.cos(angular_velocity * elapsed_time)
                 vz = 0
 
-                desired_position_velocity = np.array([x, y, z, vx, vy, vz])
-
                 # # Line
                 # x = x_radius * np.cos(angular_velocity * elapsed_time)
-                # y = 0.95
+                # y = 0.0
                 # z = self.desired_z_height
 
                 # vx = -x_radius * angular_velocity * np.sin(angular_velocity * elapsed_time)
                 # vy = 0
                 # vz = 0
+
+                desired_position_velocity = np.array([x, y, z, vx, vy, vz])
 
                 x_til = np.array([x, y, z]) - pose[:3]
                 desired = self.x_dot_ref(np.array([vx, vy, vz]), x_til)
@@ -410,9 +408,10 @@ class CrazyflieLQRNode:
             ### LQG
             if self.circle_flag:
                 self.elapsed_circle_time = rospy.Time.now().to_sec() - self.circle_time
-                # theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(self.state_estimate, reference_vel)
+                estimated_vel = self.state_estimate[3:]
+                theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(estimated_vel, self.reference_vel)
                 self.desired = desired_position_velocity
-                theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(new_vel, self.reference_vel)
+                # theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(new_vel, self.reference_vel)
             else:
                 theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(new_vel, self.reference_vel)
 
