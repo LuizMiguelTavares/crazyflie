@@ -42,7 +42,7 @@ class CrazyflieLQRNode:
         self.theta_trim = rospy.get_param('~theta_trim', 0.0)
         self.phi_trim = rospy.get_param('~phi_trim', 0.0)
         self.print_controller = rospy.get_param('~print_controller', False)
-        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/True_LQG1_05.bag', 'w')
+        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/no_balanced_04_vel20.bag', 'w')
 
         # Matrices A, B, C, D
         self.A = np.array([[-kvx/self.m, 0, 0],
@@ -329,7 +329,7 @@ class CrazyflieLQRNode:
             # Calculate elapsed time
             elapsed_time = (current_time - takeoff_time).to_sec()
 
-            angular_velocity = np.sqrt(0.5)
+            angular_velocity = np.sqrt(2)
             x_radius = 1
             y_radius = 1
 
