@@ -26,6 +26,7 @@ class CrazyflieLQRNode:
         self.m = 0.035  # mass of the drone in kg
         self.g = 9.81  # gravity
         self.Kp = 1 # Proportional gain
+        self.a_max = 12.4
         kvx = 0.03 
         kvy = 0.03
         kvz = 0
@@ -42,7 +43,7 @@ class CrazyflieLQRNode:
         self.theta_trim = rospy.get_param('~theta_trim', 0.0)
         self.phi_trim = rospy.get_param('~phi_trim', 0.0)
         self.print_controller = rospy.get_param('~print_controller', False)
-        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/no_balanced_04_vel20.bag', 'w')
+        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/balanced_05_vel10_pringles_amax_12_4.bag', 'w')
 
         # Matrices A, B, C, D
         self.A = np.array([[-kvx/self.m, 0, 0],
@@ -62,11 +63,11 @@ class CrazyflieLQRNode:
         # LQR Matricies
         self.Q = np.array([[10, 0, 0],
                             [0, 10, 0],
-                            [0, 0, 3]])
+                            [0, 0, 1]])
         
-        self.R = np.array([[20, 0, 0],
-                           [0, 20, 0],
-                           [0, 0, 30]])
+        self.R = np.array([[25, 0, 0],
+                           [0, 25, 0],
+                           [0, 0, 40]])
 
         ############## Kalman Filter ##########################
         self.Rw = np.diag([0.01, 0.01, 0.01, 0.2, 0.2, 0.2])  # Process noise covariance
@@ -192,8 +193,7 @@ class CrazyflieLQRNode:
         phi_deg   = np.sign(u_phi)*self.ang_max   if np.abs(u_phi)   > 1.0 else u_phi*self.ang_max
 
         # transforming thrust
-        a_max = 14.3
-        conversao_digital = 60000/a_max
+        conversao_digital = 60000/self.a_max
 
         digital_thrust = (thrust/self.m + self.g) * conversao_digital
         digital_thrust = min(max(digital_thrust,11000),60000)
@@ -206,8 +206,7 @@ class CrazyflieLQRNode:
         phi_rad   = np.deg2rad(phi)
 
         # transforming thrust
-        a_max = 14.3
-        conversao_digital = 60000/a_max
+        conversao_digital = 60000/self.a_max
         thrust = (thrust*self.m - self.g) / conversao_digital
 
         return theta_rad, phi_rad, thrust
@@ -301,8 +300,6 @@ class CrazyflieLQRNode:
 
                 vx_vy = np.array([self.vx, self.vy])
 
-
-
                 vx_vy_body = self.rotation_world_to_body(yaw, vx_vy)
 
                 self.position_with_gaussian_error = np.array([x_gaussian_error, y_gaussian_error, z_gaussian_error, vx_vy_body[0], vx_vy_body[1], self.vz])
@@ -329,9 +326,10 @@ class CrazyflieLQRNode:
             # Calculate elapsed time
             elapsed_time = (current_time - takeoff_time).to_sec()
 
-            angular_velocity = np.sqrt(2)
+            angular_velocity = np.sqrt(1)
             x_radius = 1
             y_radius = 1
+            z_radius = 0.25
 
             if elapsed_time < 3:
                 psi_desired = 0
@@ -343,20 +341,36 @@ class CrazyflieLQRNode:
             
             else:
                 if not self.circle_flag:
-                    # initial_state = np.array([pose[0], pose[1], pose[2], vel[0], vel[1], vel[2]])
-                    # kalman_filter = KalmanFilter(self.A_kalman, self.B_kalman, self.C_kalman, self.D_kalman, self.Rw, self.Rv, initial_state, self.initial_error_covariance, self.hz)
                     self.circle_flag = True
-                    self.state_estimate = initial_state
                     self.elapsed_circle_time = 0
                     self.circle_time = rospy.Time.now().to_sec()
-                # Circle
+                
+                # # Circle
+                # x = x_radius * np.cos(angular_velocity * elapsed_time)
+                # y = y_radius * np.sin(angular_velocity * elapsed_time)
+                # z = self.desired_z_height
+
+                # vx = -x_radius * angular_velocity * np.sin(angular_velocity * elapsed_time)
+                # vy = y_radius * angular_velocity * np.cos(angular_velocity * elapsed_time)
+                # vz = 0
+
+                # Lemniscata
+                # x = x_radius * np.cos(angular_velocity * elapsed_time)
+                # y = y_radius * np.sin(2*angular_velocity * elapsed_time)
+                # z = self.desired_z_height + z_radius * np.cos(angular_velocity * elapsed_time)
+
+                # vx = -x_radius * angular_velocity * np.sin(angular_velocity * elapsed_time)
+                # vy = 2 * y_radius * angular_velocity * np.cos(2 * angular_velocity * elapsed_time)
+                # vz = -z_radius * angular_velocity * np.sin(angular_velocity * elapsed_time)
+
+                # Pringles
                 x = x_radius * np.cos(angular_velocity * elapsed_time)
                 y = y_radius * np.sin(angular_velocity * elapsed_time)
-                z = self.desired_z_height
+                z = self.desired_z_height + 2 * z_radius * np.cos(2 * angular_velocity * elapsed_time)
 
                 vx = -x_radius * angular_velocity * np.sin(angular_velocity * elapsed_time)
                 vy = y_radius * angular_velocity * np.cos(angular_velocity * elapsed_time)
-                vz = 0
+                vz = - 2 * z_radius * angular_velocity * np.sin(2 * angular_velocity * elapsed_time)
 
                 # # Line
                 # x = x_radius * np.cos(angular_velocity * elapsed_time)
@@ -494,6 +508,11 @@ class CrazyflieLQRNode:
                 control_input_msg = Twist()
                 control_input_msg.linear.x, control_input_msg.linear.y, control_input_msg.angular.z, control_input_msg.linear.z = self.kalman_control_input
                 self.bag.write('control_input', control_input_msg)
+
+                ### Control sent
+                control_sent_msg = Twist()
+                control_sent_msg.linear.x, control_sent_msg.linear.y, control_sent_msg.angular.z, control_sent_msg.linear.z = self.theta_ref, self.phi_ref, self.psi_ref, self.thrust_ref
+                self.bag.write('control_sent', control_sent_msg)
 
                 ### Log
                 log_msg = self.Log_msg
