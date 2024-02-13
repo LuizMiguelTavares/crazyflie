@@ -520,7 +520,7 @@ class CrazyflieLQRNode:
 
                 ### Optitrack
                 optitrack_msg = self.optitrack_pose
-                self.bag.write('optitrack_pose', optitrack_msg)   
+                self.bag.write('optitrack_pose', optitrack_msg)  
 
     def handle_trajectory(self, req):
         self.compute_controller_flag = True
