@@ -383,7 +383,8 @@ class CrazyflieLQRNode:
 
                 desired_position_velocity = np.array([x, y, z, vx, vy, vz])
 
-                x_til = np.array([x, y, z]) - pose[:3]
+                #x_til = np.array([x, y, z]) - pose[:3]
+                x_til = np.array([x, y, z]) - self.state_estimate[:3]
                 desired = self.x_dot_ref(np.array([vx, vy, vz]), x_til)
 
                 psi_desired = np.arctan2(vy, vx)
@@ -414,7 +415,6 @@ class CrazyflieLQRNode:
 
             theta_phi = rotation_matrix_theta_phi @ np.array([vel[0], vel[1]])
             new_vel = np.array([theta_phi[0], theta_phi[1], vel[2]])
-
 
             new_desired = rotation_matrix_theta_phi @ np.array([desired[0], desired[1]])
             self.reference_vel = np.array([new_desired[0], new_desired[1], desired[2]])
