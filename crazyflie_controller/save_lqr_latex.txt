@@ -1,0 +1,196 @@
+\section{LQR}
+\subsection{LQR/LQG Control Design}
+
+Following the accurate state estimation provided by the Extended Kalman Filter, the Linear Quadratic Regulator (LQR) emerges as a critical component in our Linear Quadratic Gaussian (LQG) control scheme. The LQR aims to minimize a cost function that represents a trade-off between state deviation and control effort, ensuring that the drone's flight path adheres closely to the desired trajectory with minimal energy consumption.
+
+\subsubsection{Theoretical Foundations}
+
+The LQR design is based on the solution to the optimal control problem, where the objective is to minimize the quadratic cost function:
+
+\begin{equation}
+J = \int_{0}^{\infty} (x^T Q x + u^T R u) dt
+\end{equation}
+
+where \(x\) represents the state vector, \(u\) the control input vector, \(Q\) a matrix penalizing deviations from the desired state, and \(R\) a matrix penalizing control effort. The matrices \(Q\) and \(R\) are chosen to reflect the relative importance of state accuracy versus control effort in the overall control strategy.
+
+\subsubsection{Integration with State Estimates from EKF}
+
+The integration of LQR within the LQG framework is a testament to the synergy between optimal control and state estimation. The LQR utilizes the state estimates provided by the EKF to calculate the optimal control inputs that minimize the cost function \(J\), considering both the current state of the drone and the uncertainties in its dynamics and measurements.
+
+\paragraph{Optimal Control Law}
+
+The optimal control law derived from the LQR formulation is given by:
+
+\begin{equation}
+u^* = -K x
+\end{equation}
+
+where \(K\) is the gain matrix computed by solving the algebraic Riccati equation, and \(x\) is the state estimate provided by the EKF. This control law dynamically adjusts the control inputs to steer the drone towards the desired state with optimal efficiency.
+
+\subsubsection{Challenges in the LQR/LQG Implementation}
+
+Implementing the LQR/LQG control scheme in the context of drone flight presents unique challenges, including handling the nonlinearities of the drone's dynamics and ensuring the robustness of control under varying environmental conditions. The LQG framework, combining the LQR with the state estimates from the EKF, addresses these challenges by providing a systematic approach to control under uncertainty, adapting to real-time changes in the drone's behavior and external disturbances.
+
+\paragraph{Practical Considerations}
+
+In practice, the implementation of the LQR/LQG control scheme involves careful tuning of the \(Q\) and \(R\) matrices to achieve the desired balance between tracking performance and control effort.
+
+\subsubsection{Role in Advanced Drone Control}
+
+The LQR/LQG control scheme represents a sophisticated approach to drone control, enabling precise navigation and maneuverability even in the presence of noise and uncertainties. By leveraging the accurate state estimation capabilities of the EKF and the optimal control strategies of the LQR, our framework achieves unparalleled performance in drone flight control, paving the way for advanced applications in surveillance, delivery, and autonomous navigation.
+
+\subsection{LQR/LQG Control Design for Velocity Tracking}
+
+The Linear Quadratic Regulator (LQR), at its core, is designed as a regulation control method, aimed at maintaining the drone's state at a set point or within a desired range. However, for the dynamic environment and objectives of drone flight, merely regulating to a static set point is insufficient. Instead, our control strategy requires the capability to track a variable velocity profile, which is essential for navigating complex trajectories and responding to changing environmental conditions.
+
+\subsubsection{Adaptation to Velocity Tracking}
+
+To extend the LQR from a regulation framework to a tracking mechanism, we introduce the concept of velocity error into the control input. This error represents the difference between the desired velocity, as dictated by the drone's mission or an outer control loop, and the drone's current velocity, as estimated by the Extended Kalman Filter (EKF).
+
+\paragraph{Velocity Error Integration}
+
+The integration of velocity error into the LQR framework modifies the control input to focus on minimizing this error, effectively transforming the LQR into a tracking control method. The modified control law is expressed as:
+
+\begin{equation}
+u^* = -K (x - x_{\text{ref}})
+\end{equation}
+
+where \(x_{\text{ref}}\) represents the reference state, including the desired velocity components, and \(x\) is the current state estimate of the drone. The gain matrix \(K\), determined through the solution of the algebraic Riccati equation, dynamically adjusts the control inputs to minimize the velocity error, steering the drone towards the desired trajectory.
+
+\subsubsection{Integration with Outer Control Loop}
+
+The transformation of LQR into a tracking method is complemented by an outer control loop that generates the desired velocity profile based on the mission objectives or environmental stimuli. This outer loop serves as the reference generator, providing \(x_{\text{ref}}\) for the LQR, and is integral to the broader LQG control scheme, ensuring that the drone's flight path is not only optimized for current conditions but also aligned with overall mission goals.
+
+\paragraph{Practical Implementation and Tuning}
+
+Implementing this tracking approach involves careful tuning of the LQR's \(Q\) and \(R\) matrices to prioritize tracking performance without incurring excessive control effort. The balance achieved through this tuning process ensures that the drone can accurately follow dynamic velocity profiles while maintaining stability and efficiency.
+
+\subsubsection{Significance in Drone Control}
+
+By adapting the LQR for velocity tracking, our control framework significantly enhances the drone's operational capabilities. This advancement allows for precise navigation through challenging environments, robust response to dynamic objectives, and efficient execution of complex flight maneuvers. The integration of velocity error tracking within the LQR/LQG framework exemplifies our commitment to pushing the boundaries of autonomous drone technology, setting new standards for precision, adaptability, and performance in unmanned flight.
+
+\section{New LQR}
+
+\subsection{LQR/LQG Control Design for Optimal Drone Behavior}
+
+The fusion of the Linear Quadratic Regulator (LQR) with the Extended Kalman Filter (EKF) forms the backbone of our Linear Quadratic Gaussian (LQG) control scheme, enabling precise and adaptable drone flight control. This sophisticated approach not only caters to stabilizing the drone's state within desired parameters but also adeptly manages the challenge of following dynamically changing velocity profiles, essential for real-world applications.
+
+\subsubsection{Optimization Framework}
+
+The essence of the LQR component lies in its optimization-centric design, aimed at minimizing a cost function that balances state accuracy and control effort. The foundational equation:
+
+\begin{equation}
+J = \int_{0}^{\infty} (x^T Q x + u^T R u) dt,
+\end{equation}
+
+captures this trade-off, with \(Q\) and \(R\) matrices fine-tuned to prioritize precision in state tracking against the economy of control input usage. This careful calibration ensures that the drone's operations align with the efficiency and accuracy demands of sophisticated flight missions.
+
+\subsubsection{Synergy with Extended Kalman Filter}
+
+Critical to the LQR's effectiveness is its integration with state estimates refined by the EKF. This combination leverages the EKF's prowess in mitigating noise and uncertainties from sensor data, providing a clear and accurate depiction of the drone's current state for the LQR's consumption. The optimal control inputs, therefore, are computed as:
+
+\begin{equation}
+u^* = -K x,
+\end{equation}
+
+where the gain matrix \(K\) is meticulously derived to ensure the drone's actions steer it toward the desired state efficiently, reflecting an optimal balance dictated by the LQR's cost function.
+
+\subsubsection{Evolving from Regulation to Tracking}
+
+While traditional LQR methodology excels in regulation—holding the drone at a predetermined set point—our ambitions extend into the realm of dynamic velocity tracking. To achieve this, we augment the LQR inputs with velocity error, the discrepancy between the drone's actual velocity and the target velocity profile issued by an external command or an outer control loop.
+
+\paragraph{Velocity Error Integration}
+
+This integration transforms the LQR into a robust tracking controller:
+
+\begin{equation}
+u^* = -K (x - x_{\text{ref}}),
+\end{equation}
+
+where \(x_{\text{ref}}\) encapsulates the desired state, including velocity targets. This modification ensures the control efforts are directed towards minimizing the velocity error, dynamically guiding the drone along the intended path.
+
+\subsubsection{Harmonization with Outer Control Loops}
+
+The adaptation of LQR for tracking is seamlessly supported by an outer control loop, responsible for generating the desired velocity profile based on overarching mission goals. This loop acts as a strategic planner, outlining the trajectory for the LQR to execute with precision, demonstrating a comprehensive control strategy that adeptly navigates the complexities of drone flight.
+
+\paragraph{Implementation Insights}
+
+Tuning the \(Q\) and \(R\) matrices for this evolved LQR approach demands a meticulous balance, ensuring the drone remains responsive to trajectory adjustments while avoiding overreaction to minor deviations. Such tuning is pivotal in maintaining an equilibrium between aggressive maneuvering capabilities and the conservation of energy, embodying a control strategy that is both ambitious and pragmatic.
+
+\subsubsection{Impact on Drone Control Paradigms}
+
+The integration of velocity error tracking within the LQR/LQG framework significantly advances drone control technology. It enables not just reactive stabilization but proactive trajectory shaping, ensuring drones can navigate intricately designed paths with agility and precision. This leap in control methodology underscores our commitment to advancing drone capabilities, setting new benchmarks for performance, adaptability, and operational efficiency in autonomous flight systems.
+
+\section{New Nwe LQG}
+
+\subsection{LQR/LQG Control Design for Advanced Drone Maneuverability}
+
+The fusion of the Linear Quadratic Regulator (LQR) with the Extended Kalman Filter (EKF) underpins our sophisticated Linear Quadratic Gaussian (LQG) control scheme, enabling an unprecedented level of adaptability and precision in drone flight control. This scheme adeptly balances the drone's stability within desired operational parameters against the imperative of following dynamically changing velocity profiles, crucial for real-world applications.
+
+\subsubsection{Optimization Framework with Enhanced Feedforward Correction}
+
+Central to our control architecture is the LQR's optimization-centric design, aimed at minimizing a cost function that delicately balances state accuracy against control effort:
+
+\begin{equation}
+J = \int_{0}^{\infty} (x^T Q x + u^T R u) dt,
+\end{equation}
+
+where \(Q\) and \(R\) matrices are fine-tuned to align drone operations with the dual objectives of efficiency and precision. A key innovation in our LQR implementation is the inclusion of a specific feedforward correction mechanism, designed to meticulously adjust the closed-loop DC gain for accurate trajectory tracking.
+
+\paragraph{Specific Feedforward Control Input Formulation}
+
+To achieve a robust tracking mechanism, we have refined our control input strategy to incorporate both the desired state trajectory and the current state's deviation from this trajectory. The control input \(u\) is formulated as:
+
+\begin{equation}
+u = \mathbf{N_u} \cdot \mathbf{x_{\text{des}}} - \mathbf{K} \cdot (\mathbf{x} - \mathbf{N_x} \cdot \mathbf{x_{\text{des}}}),
+\end{equation}
+
+where \(\mathbf{N_u}\) and \(\mathbf{N_x}\) are matrices designed to scale the desired states \(\mathbf{x_{\text{des}}}\) for direct feedforward action and to adjust the feedback component for the state deviation, respectively. This precise formulation ensures the control efforts are optimally aligned with both correcting current deviations and preemptively adjusting for future state trajectories, significantly enhancing the drone's tracking accuracy and responsiveness.
+
+\subsubsection{Synergy Between Inner and Outer Control Loops}
+
+This advanced feedforward strategy is seamlessly integrated within the inner-outer loop control architecture. The outer loop dictates the strategic trajectory and velocity goals, while the inner loop, empowered by the LQR/LQG scheme with the refined feedforward control input, dynamically refines the drone's flight path for real-time adherence to these goals. This layered approach to control not only ensures sophisticated maneuverability and stability but also aligns the drone's flight behavior with overarching mission directives.
+
+\subsubsection{Comprehensive Control Strategy Overview}
+
+Our control framework introduces a pioneering approach to drone flight management, characterized by an intricate balance between an outer control loop and an inner LQG control loop. The outer loop, grounded in inverse kinematics, is meticulously designed to asymptotically stabilize the position error, effectively translating high-level trajectory and positioning goals into precise reference velocities. This strategic layer ensures that the drone's path is continuously adjusted to align with the intended trajectory, minimizing positional deviations through sophisticated kinematic calculations.
+
+\paragraph{Inner LQG Control Loop for Velocity Optimization}
+
+The core of our velocity control strategy resides in the inner LQG loop, which is finely tuned to optimize the drone's response to these reference velocities. By leveraging the precise state estimates provided by the Extended Kalman Filter, the LQR component dynamically adjusts control inputs to ensure that the drone's velocity asymptotically converges to the reference values determined by the outer loop. This synergy allows for a seamless transition between desired state projections and real-time control actions, ensuring smooth and responsive flight dynamics.
+
+\paragraph{Kinematic-based Outer Loop Integration}
+
+The integration of the outer control loop's kinematic-based strategy with the inner loop's velocity optimization exemplifies a comprehensive control architecture. This architecture not only addresses the immediate control needs of the drone but also aligns with the overarching mission objectives, facilitating a harmonious blend of strategic planning and tactical execution. The mathematical transformation of control signals to the drone's frame of reference, accounting for its current orientation, further refines the execution of these control inputs, enhancing the fidelity of the drone's adherence to its intended path.
+
+\paragraph{Advancing Drone Control Paradigms}
+
+This advanced control framework, with its dual-loop structure, represents a significant evolution in drone control technologies. It transcends traditional control schemes by not only reacting to environmental variables and system perturbations but also by proactively shaping the drone's trajectory to meet dynamic operational requirements. By setting new standards for adaptability, precision, and performance, our approach marks a pivotal step forward in the quest for autonomous drone systems capable of executing complex maneuvers with unprecedented accuracy and efficiency.
+
+\subsubsection{Application of Inverse Kinematics in Outer Control Loop}
+
+A pivotal aspect of our control strategy is the application of inverse kinematics within the outer control loop, facilitating precise position error stabilization. This process is elegantly captured through the transformation of desired velocities into the drone's frame of reference, a crucial step given the drone's holonomic nature. The mathematical formulation for generating reference velocities (\(\dot{x}_{\text{ref}}\)) in the world frame is given by:
+
+\begin{equation}
+\dot{x}_{\text{ref\_world}} = \dot{x}_{\text{desired\_world}} + K_{\text{p}} \cdot x_{\tilde{\text{world}}},
+\end{equation}
+
+where \(\dot{x}_{\text{desired\_world}}\) represents the desired velocity in the world frame, \(K_{\text{p}}\) the proportional control gain, and \(x_{\tilde{\text{world}}}\) the positional error in the world frame. This equation ensures the outer loop generates velocity profiles that not only aim to reach the target position but also correct any deviations from the desired trajectory.
+
+\paragraph{Rotation to Drone Frame}
+
+The transformation of these reference velocities to the drone's frame leverages a rotation matrix dependent on the drone's yaw angle (\(\psi\)), accommodating for the drone's orientation and ensuring the control inputs are accurately aligned with its current state:
+
+allowing for the computation of the new desired velocities (\(\dot{x}_{\text{ref}}\)) as:
+
+\begin{equation}
+\dot{x}_{\text{ref}} = \text{R}_{w2b} \cdot \dot{x}_{\text{desired\_world}}
+\end{equation}
+
+This precise calculation ensures that the velocity references are meticulously adjusted for the drone's current orientation, optimizing control accuracy and responsiveness.
+
+\subsubsection{Synergistic Control Framework}
+
+By integrating inverse kinematics with a sophisticated LQR/LQG control design, our framework adeptly manages the complexities of drone flight, ensuring adaptability and precision. The outer loop's kinematic-based strategy, coupled with the inner loop's velocity optimization, exemplifies a harmonious blend of strategic planning and tactical execution. This approach not only enhances the drone's trajectory tracking capabilities but also solidifies its ability to navigate complex environments with unparalleled agility and efficiency, marking a significant advancement in autonomous drone control systems.
+
+\section{One more}

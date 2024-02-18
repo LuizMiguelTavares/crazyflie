@@ -68,21 +68,21 @@ class ExtendedKalmanFilter:
         control_input = sp.Matrix([self.theta, self.phi, self.psi, self.t])
 
         # World frame dynamics
-        x_world = sp.cos(self.psi) * self.x_dot_body - sp.sin(self.psi) * self.y_dot_body
-        y_world = sp.sin(self.psi) * self.x_dot_body + sp.cos(self.psi) * self.y_dot_body
-        z_world = self.z_dot_body
-        x_ddot_w = -self.Kvx / self.m * self.x_dot_body + self.t / self.m * sp.sin(self.theta)
-        y_ddot_w = -self.Kvy / self.m * self.y_dot_body + self.t / self.m * sp.sin(self.phi)
-        z_ddot_w = -self.Kvz / self.m * self.z_dot_body + self.t / self.m * sp.cos(self.theta) * sp.cos(self.phi) - self.g
+        x_dot_world = sp.cos(self.psi) * self.x_dot_body - sp.sin(self.psi) * self.y_dot_body
+        y_dot_world = sp.sin(self.psi) * self.x_dot_body + sp.cos(self.psi) * self.y_dot_body
+        z_dot_world = self.z_dot_body
+        x_ddot_body = -self.Kvx / self.m * self.x_dot_body + self.t / self.m * sp.sin(self.theta)
+        y_ddot_body = -self.Kvy / self.m * self.y_dot_body + self.t / self.m * sp.sin(self.phi)
+        z_ddot_body = -self.Kvz / self.m * self.z_dot_body + self.t / self.m * sp.cos(self.theta) * sp.cos(self.phi) - self.g
 
         # State transition equations
         new_state = sp.Matrix([
-            self.x + x_world * self.dt,
-            self.y + y_world * self.dt,
-            self.z + z_world * self.dt,
-            self.x_dot_body + x_ddot_w * self.dt,
-            self.y_dot_body + y_ddot_w * self.dt,
-            self.z_dot_body + z_ddot_w * self.dt
+            self.x + x_dot_world * self.dt,
+            self.y + y_dot_world * self.dt,
+            self.z + z_dot_world * self.dt,
+            self.x_dot_body + x_ddot_body * self.dt,
+            self.y_dot_body + y_ddot_body * self.dt,
+            self.z_dot_body + z_ddot_body * self.dt
         ])
 
         # Compute the Jacobian matrix of the state transition function
@@ -113,21 +113,21 @@ class ExtendedKalmanFilter:
         theta, phi, psi, t = control_input
 
         # Calculate the world frame dynamics
-        x_world = np.cos(psi) * x_dot_body - np.sin(psi) * y_dot_body
-        y_world = np.sin(psi) * x_dot_body + np.cos(psi) * y_dot_body
-        z_world = z_dot_body
-        x_ddot_w = -self.Kvx / self.m * x_dot_body + t / self.m * np.sin(theta)
-        y_ddot_w = -self.Kvy / self.m * y_dot_body + t / self.m * np.sin(phi)
-        z_ddot_w = -self.Kvz / self.m * z_dot_body + t / self.m * np.cos(theta) * np.cos(phi) - self.g
+        x_dot_world = np.cos(psi) * x_dot_body - np.sin(psi) * y_dot_body
+        y_dot_world = np.sin(psi) * x_dot_body + np.cos(psi) * y_dot_body
+        z_dot_world = z_dot_body
+        x_ddot_body = -self.Kvx / self.m * x_dot_body + t / self.m * np.sin(theta)
+        y_ddot_body = -self.Kvy / self.m * y_dot_body + t / self.m * np.sin(phi)
+        z_ddot_body = -self.Kvz / self.m * z_dot_body + t / self.m * np.cos(theta) * np.cos(phi) - self.g
 
         # State transition
         new_state = np.array([
-            x + x_world * self.dt,
-            y + y_world * self.dt,
-            z + z_world * self.dt,
-            x_dot_body + x_ddot_w * self.dt,
-            y_dot_body + y_ddot_w * self.dt,
-            z_dot_body + z_ddot_w * self.dt
+            x + x_dot_world * self.dt,
+            y + y_dot_world * self.dt,
+            z + z_dot_world * self.dt,
+            x_dot_body + x_ddot_body * self.dt,
+            y_dot_body + y_ddot_body * self.dt,
+            z_dot_body + z_ddot_body * self.dt
         ])
 
         return new_state

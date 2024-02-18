@@ -34,6 +34,7 @@ class CrazyflieLQRNode:
         self.Kvx, self.Kvy, self.Kvz = kvx, kvy, kvz
 
         self.ang_max = rospy.get_param('~ang_max', 15.0)
+        self.is_LQG = rospy.get_param('~is_LQG', False)
         self.circle_flag = False
         self.psi_ref_max = 100
         self.desired_z_height = 1
@@ -235,8 +236,6 @@ class CrazyflieLQRNode:
         counter = 0
         kalman_flag = False
         first_loop = True
-        pose_old = None
-        time_old = None
         
         cf_LQR = FeedForwardLQR(self.A, self.B, self.C, self.D, self.Q, self.R)
 
@@ -383,8 +382,11 @@ class CrazyflieLQRNode:
 
                 desired_position_velocity = np.array([x, y, z, vx, vy, vz])
 
-                #x_til = np.array([x, y, z]) - pose[:3]
-                x_til = np.array([x, y, z]) - self.state_estimate[:3]
+                if self.is_LQG:
+                    x_til = np.array([x, y, z]) - self.state_estimate[:3]
+                else:
+                    x_til = np.array([x, y, z]) - pose[:3]
+                
                 desired = self.x_dot_ref(np.array([vx, vy, vz]), x_til)
 
                 psi_desired = np.arctan2(vy, vx)

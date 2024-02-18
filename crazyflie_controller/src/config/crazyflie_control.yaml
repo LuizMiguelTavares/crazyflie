@@ -3,6 +3,8 @@ print_kalman: False
 print_controller: False
 ang_max: 30.0
 
+is_LQG: False
+
 theta_trim: 0.0
 phi_trim: 0.0
 
