@@ -26,7 +26,7 @@ class CrazyflieLQRNode:
         self.m = 0.035  # mass of the drone in kg
         self.g = 9.81  # gravity
         self.Kp = 1 # Proportional gain
-        self.a_max = 12.4
+        self.a_max = 13.53
         kvx = 0.03 
         kvy = 0.03
         kvz = 0
@@ -44,7 +44,7 @@ class CrazyflieLQRNode:
         self.theta_trim = rospy.get_param('~theta_trim', 0.0)
         self.phi_trim = rospy.get_param('~phi_trim', 0.0)
         self.print_controller = rospy.get_param('~print_controller', False)
-        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/balanced_05_vel10_pringles_amax_12_4.bag', 'w')
+        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/LQG_08_vel20_pringles_2.bag', 'w')
 
         # Matrices A, B, C, D
         self.A = np.array([[-kvx/self.m, 0, 0],
@@ -325,7 +325,7 @@ class CrazyflieLQRNode:
             # Calculate elapsed time
             elapsed_time = (current_time - takeoff_time).to_sec()
 
-            angular_velocity = np.sqrt(1)
+            angular_velocity = np.sqrt(2)
             x_radius = 1
             y_radius = 1
             z_radius = 0.25
@@ -365,7 +365,7 @@ class CrazyflieLQRNode:
                 # Pringles
                 x = x_radius * np.cos(angular_velocity * elapsed_time)
                 y = y_radius * np.sin(angular_velocity * elapsed_time)
-                z = self.desired_z_height + 2 * z_radius * np.cos(2 * angular_velocity * elapsed_time)
+                z = self.desired_z_height + z_radius * np.cos(2 * angular_velocity * elapsed_time)
 
                 vx = -x_radius * angular_velocity * np.sin(angular_velocity * elapsed_time)
                 vy = y_radius * angular_velocity * np.cos(angular_velocity * elapsed_time)

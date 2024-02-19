@@ -3,9 +3,13 @@ print_kalman: False
 print_controller: False
 ang_max: 30.0
 
-is_LQG: False
+is_LQG: True 
 
 theta_trim: 0.0
 phi_trim: 0.0
 
-uri: "radio://0/20/2M/E7E7E7E705"
+# uri: "radio://0/10/2M/E7E7E7E703"
+# uri: "radio://0/10/2M/E7E7E7E704"
+# uri: "radio://0/20/2M/E7E7E7E705"
+# uri: "radio://0/20/2M/E7E7E7E707"
+uri: "radio://0/50/2M/E7E7E7E708"
