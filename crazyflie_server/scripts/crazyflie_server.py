@@ -19,6 +19,7 @@ class CrazyflieServerNode:
         self._cf = Crazyflie()
 
         self.vel_flag = False
+        self.angles_flag = False
         self.thrust_flag = False
         self.ang_flag = False
 
@@ -43,8 +44,8 @@ class CrazyflieServerNode:
         ################### CRAZYFLIE PARAMETERS #######################
 
         # Setting Crazyflie parameters
-        self._cf.param.set_value("stabilizer.controller", 2) 
-        self._cf.param.set_value("stabilizer.estimator", 3)
+        self._cf.param.set_value("stabilizer.controller", 1)  # 1 = PID, 2 = Mellinger, 3 = INDI, 4 = Brescianini
+        self._cf.param.set_value("stabilizer.estimator", 3)   # 1 = Complementary filter, 2 = EKF, 3 = unscented Kalman filter
         self._cf.param.set_value("ctrlMel.ki_m_z", 0)
         self._cf.param.set_value("ctrlMel.i_range_m_z", 0)
 
@@ -55,6 +56,8 @@ class CrazyflieServerNode:
         
         # Publishers for different sets of data
         self.pub_log = rospy.Publisher('crazyflieLog', CrazyflieLog, queue_size=10)
+        self.pub_only_vel = rospy.Publisher('crazyflieVel', Vector3, queue_size=10)
+        self.pub_only_ang = rospy.Publisher('crazyflieAng', Twist, queue_size=10)
 
         self.timer = rospy.Timer(rospy.Duration(1.0/60.0), self._send_log_data)
 
@@ -158,6 +161,8 @@ class CrazyflieServerNode:
     def _send_log_data(self, event):
         if self.vel_flag and self.thrust_flag and self.ang_flag:
             log_msg = CrazyflieLog()
+            vel_msg = Vector3()
+            ang_msg = Twist()
 
             timestamp = rospy.Time.now().to_sec()
             log_msg.timestamp = timestamp
@@ -170,8 +175,19 @@ class CrazyflieServerNode:
             log_msg.roll = self.roll
             log_msg.thrust = self.thrust
             log_msg.yaw = self.yaw
+        
+            vel_msg.x = self.vx
+            vel_msg.y = self.vy
+            vel_msg.z = self.vz
+
+            ang_msg.linear.x = self.pitch
+            ang_msg.linear.y = self.roll
+            ang_msg.linear.z = self.thrust
+            ang_msg.angular.z = self.yaw
 
             self.pub_log.publish(log_msg)
+            self.pub_only_vel.publish(vel_msg)
+            self.pub_only_ang.publish(ang_msg)
 
     def publish_twist(self, msg):        
         roll = msg.linear.y

@@ -26,7 +26,7 @@ class CrazyflieLQRNode:
         self.m = 0.035  # mass of the drone in kg
         self.g = 9.81  # gravity
         self.Kp = 1 # Proportional gain
-        self.a_max = 13.53
+        self.a_max = 14.3
         kvx = 0.03 
         kvy = 0.03
         kvz = 0
@@ -44,7 +44,7 @@ class CrazyflieLQRNode:
         self.theta_trim = rospy.get_param('~theta_trim', 0.0)
         self.phi_trim = rospy.get_param('~phi_trim', 0.0)
         self.print_controller = rospy.get_param('~print_controller', False)
-        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/LQG_08_vel20_pringles_2.bag', 'w')
+        self.bag = rosbag.Bag('/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/LQG_08_waypoints_n_R.bag', 'w')
 
         # Matrices A, B, C, D
         self.A = np.array([[-kvx/self.m, 0, 0],
@@ -62,12 +62,21 @@ class CrazyflieLQRNode:
         self.D = np.zeros((self.C.shape[0], self.B.shape[1]))
 
         # LQR Matricies
+        # self.Q = np.array([[10, 0, 0],
+        #                     [0, 10, 0],
+        #                     [0, 0, 1]])
+        
+        # self.R = np.array([[25, 0, 0],
+        #                    [0, 25, 0],
+        #                    [0, 0, 40]])
+
+        # For Waypoints
         self.Q = np.array([[10, 0, 0],
                             [0, 10, 0],
                             [0, 0, 1]])
         
-        self.R = np.array([[25, 0, 0],
-                           [0, 25, 0],
+        self.R = np.array([[60, 0, 0],
+                           [0, 60, 0],
                            [0, 0, 40]])
 
         ############## Kalman Filter ##########################
@@ -93,6 +102,7 @@ class CrazyflieLQRNode:
         self.emergency_flag_is_true = False
         self.pose_is_true = False
         self.joy_is_true = False
+        self.crazyflie_LOG_flag = False
 
         # Message to stop the drone
         self.stop_msg = Twist()
@@ -135,7 +145,7 @@ class CrazyflieLQRNode:
         rospy.loginfo("Crazyflie LQR Node started")
 
     def crazyflie_log_callback(self, msg):
-
+        self.crazyflie_LOG_flag = True
         self.Log_msg = msg
         self.vx = msg.vx
         self.vy = msg.vy
@@ -317,6 +327,8 @@ class CrazyflieLQRNode:
                     vel = (np.array([pose[0], pose[1], pose[2]]) 
                             - np.array([vel_pose_old[0], vel_pose_old[1], vel_pose_old[2]])) / dt
                     
+                    # print(f'Rate: {np.round(1/dt, 3)}')
+                    
                     vel_pose_old = pose
                     vel_time_old = pose_time
 
@@ -324,13 +336,16 @@ class CrazyflieLQRNode:
 
             # Calculate elapsed time
             elapsed_time = (current_time - takeoff_time).to_sec()
+            self.elapsed_time = elapsed_time
 
             angular_velocity = np.sqrt(2)
             x_radius = 1
             y_radius = 1
             z_radius = 0.25
 
-            if elapsed_time < 3:
+            wait_time = 3
+
+            if elapsed_time < wait_time:
                 psi_desired = 0
                 psi_dot_ref = 0
 
@@ -352,8 +367,11 @@ class CrazyflieLQRNode:
                 # vx = -x_radius * angular_velocity * np.sin(angular_velocity * elapsed_time)
                 # vy = y_radius * angular_velocity * np.cos(angular_velocity * elapsed_time)
                 # vz = 0
+                
+                # psi_desired = np.arctan2(vy, vx)
+                # psi_dot_ref = angular_velocity
 
-                # Lemniscata
+                # # Lemniscata
                 # x = x_radius * np.cos(angular_velocity * elapsed_time)
                 # y = y_radius * np.sin(2*angular_velocity * elapsed_time)
                 # z = self.desired_z_height + z_radius * np.cos(angular_velocity * elapsed_time)
@@ -361,15 +379,79 @@ class CrazyflieLQRNode:
                 # vx = -x_radius * angular_velocity * np.sin(angular_velocity * elapsed_time)
                 # vy = 2 * y_radius * angular_velocity * np.cos(2 * angular_velocity * elapsed_time)
                 # vz = -z_radius * angular_velocity * np.sin(angular_velocity * elapsed_time)
+                
+                # psi_desired = np.arctan2(vy, vx)
+                # psi_dot_ref = angular_velocity
 
-                # Pringles
-                x = x_radius * np.cos(angular_velocity * elapsed_time)
-                y = y_radius * np.sin(angular_velocity * elapsed_time)
-                z = self.desired_z_height + z_radius * np.cos(2 * angular_velocity * elapsed_time)
+                # # Pringles
+                # x = x_radius * np.cos(angular_velocity * elapsed_time)
+                # y = y_radius * np.sin(angular_velocity * elapsed_time)
+                # z = self.desired_z_height + z_radius * np.cos(2 * angular_velocity * elapsed_time)
 
-                vx = -x_radius * angular_velocity * np.sin(angular_velocity * elapsed_time)
-                vy = y_radius * angular_velocity * np.cos(angular_velocity * elapsed_time)
-                vz = - 2 * z_radius * angular_velocity * np.sin(2 * angular_velocity * elapsed_time)
+                # vx = -x_radius * angular_velocity * np.sin(angular_velocity * elapsed_time)
+                # vy = y_radius * angular_velocity * np.cos(angular_velocity * elapsed_time)
+                # vz = - 2 * z_radius * angular_velocity * np.sin(2 * angular_velocity * elapsed_time)
+                    
+                # # Waypoints
+                
+                waypoints = np.array([[-1.8, 1.2 , 0.7], [2.2, -1.2 , 1.3], [-1.8, -1.2 , 0.7], [2.2, 1.2 , 1.3]]) # Rain
+                # waypoints = np.array([[-2, 1.2 , 0.8], [2, -1.2 , 1.8], [-2, -1.2 , 0.8], [2, 1.2 , 1.8]]) # 0fficial
+                # waypoints = np.array([[-1, 1 , 0.8], [1.5, -1 , 1.8], [-1, -1 , 0.8], [1.5, 1 , 1.8]]) # Camera
+
+
+                waypoint_time = 6
+
+                if self.elapsed_circle_time < waypoint_time:
+                    x = waypoints[0, 0]
+                    y = waypoints[0, 1]
+                    z = waypoints[0, 2]
+
+                    vx = 0
+                    vy = 0
+                    vz = 0
+                elif self.elapsed_circle_time < 2*waypoint_time:
+                    x = waypoints[1, 0]
+                    y = waypoints[1, 1]
+                    z = waypoints[1, 2]
+
+                    vx = 0
+                    vy = 0
+                    vz = 0
+                elif self.elapsed_circle_time < 3*waypoint_time:
+                    x = waypoints[2, 0]
+                    y = waypoints[2, 1]
+                    z = waypoints[2, 2]
+
+                    vx = 0
+                    vy = 0
+                    vz = 0
+                elif self.elapsed_circle_time < 4*waypoint_time:
+                    x = waypoints[3, 0]
+                    y = waypoints[3, 1]
+                    z = waypoints[3, 2]
+
+                    vx = 0
+                    vy = 0
+                    vz = 0
+                else:
+                    x = waypoints[0, 0]
+                    y = waypoints[0, 1]
+                    z = waypoints[0, 2]
+
+                    vx = 0
+                    vy = 0
+                    vz = 0
+
+                psi_desired = 0
+                psi_dot_ref = 0
+
+                # # Eight
+                centers = [-1, 1]
+                x_radius = 1
+                y_radius = 1
+                # x = x_radius * np.cos(angular_velocity * elapsed_time)    
+                # y = y_radius * np.sin(2*angular_velocity * elapsed_time)
+                # z = self.desired_z_height                
 
                 # # Line
                 # x = x_radius * np.cos(angular_velocity * elapsed_time)
@@ -388,9 +470,6 @@ class CrazyflieLQRNode:
                     x_til = np.array([x, y, z]) - pose[:3]
                 
                 desired = self.x_dot_ref(np.array([vx, vy, vz]), x_til)
-
-                psi_desired = np.arctan2(vy, vx)
-                psi_dot_ref = angular_velocity
 
                 # ax = -x_radius * angular_velocity**2 * np.cos(angular_velocity * elapsed_time)
                 # ay = -y_radius * angular_velocity**2 * np.sin(angular_velocity * elapsed_time)
@@ -431,6 +510,8 @@ class CrazyflieLQRNode:
             else:
                 theta_LQR, phi_LQR, thrust_LQR = cf_LQR.compute_u(new_vel, self.reference_vel)
 
+            self.raw_control_reference = np.array([theta_LQR, phi_LQR, thrust_LQR])
+
             theta_ref, phi_ref, thrust_ref = self.conversions_crazyflie(theta_LQR, phi_LQR, thrust_LQR)
             psi_ref = self.compute_psi(psi_dot_ref, psi_desired)
 
@@ -462,67 +543,83 @@ class CrazyflieLQRNode:
             return
         
         with self.bag_write_lock:
-            if self.circle_flag:
+            # if self.circle_flag:
+            write_flag = True
 
-                if not self.is_bag_open:
-                    return
-        
-                ### time
+            if not self.is_bag_open:
+                return
+    
+            ### time
+            try:
                 time = Float32()
-                time.data = self.elapsed_circle_time
-                self.bag.write('time', time)
+                # time.data = self.elapsed_circle_time
+                time.data = self.elapsed_time
                 
                 ### state
                 pose_LQR_msg = Vector3()
                 pose_LQR_msg.x, pose_LQR_msg.y, pose_LQR_msg.z = self.pose_LQR[:3] 
-                self.bag.write('position_Optitrack', pose_LQR_msg)
+        
                 vel_LQR_msg = Vector3()
                 vel_LQR_msg.x, vel_LQR_msg.y, vel_LQR_msg.z = self.pose_LQR[3:] 
-                self.bag.write('vel_Optitrack', vel_LQR_msg)
 
                 ### state estimate
                 position_estimate_msg = Vector3()
                 position_estimate_msg.x, position_estimate_msg.y, position_estimate_msg.z = self.state_estimate[:3]
-                self.bag.write('position_estimate_topic', position_estimate_msg)
                 vel_estimate_msg = Vector3()
                 vel_estimate_msg.x, vel_estimate_msg.y, vel_estimate_msg.z = self.state_estimate[3:]
-                self.bag.write('vel_estimate_topic', vel_estimate_msg)
 
                 ### Desired
                 desired_position_msg = Vector3()
                 desired_position_msg.x, desired_position_msg.y, desired_position_msg.z = self.desired[:3]
-                self.bag.write('desired_position', desired_position_msg)
                 desired_vel_msg = Vector3()
                 desired_vel_msg.x, desired_vel_msg.y, desired_vel_msg.z = self.desired[3:]
-                self.bag.write('desired_vel', desired_vel_msg)
 
                 ### Reference velocity
                 ref_vel_msg = Vector3()
                 ref_vel_msg.x, ref_vel_msg.y, ref_vel_msg.z = self.reference_vel
-                self.bag.write('reference_vel', ref_vel_msg)
 
                 ### Position with gaussian error
                 position_gaussian_error_msg = Vector3()
                 position_gaussian_error_msg.x, position_gaussian_error_msg.y, position_gaussian_error_msg.z = self.position_with_gaussian_error[:3]
-                self.bag.write('position_gaussian_error', position_gaussian_error_msg)
 
                 ### Control input ref
                 control_input_msg = Twist()
                 control_input_msg.linear.x, control_input_msg.linear.y, control_input_msg.angular.z, control_input_msg.linear.z = self.kalman_control_input
-                self.bag.write('control_input', control_input_msg)
+
+                ### Raw control reference
+                raw_control_reference_msg = Vector3()
+                raw_control_reference_msg.x, raw_control_reference_msg.y, raw_control_reference_msg.z = self.raw_control_reference
 
                 ### Control sent
                 control_sent_msg = Twist()
                 control_sent_msg.linear.x, control_sent_msg.linear.y, control_sent_msg.angular.z, control_sent_msg.linear.z = self.theta_ref, self.phi_ref, self.psi_ref, self.thrust_ref
-                self.bag.write('control_sent', control_sent_msg)
 
                 ### Log
                 log_msg = self.Log_msg
-                self.bag.write('crazyflieLog', log_msg)   
 
                 ### Optitrack
                 optitrack_msg = self.optitrack_pose
+            except:
+                write_flag = False
+
+            ## write_bag
+            if write_flag:
+                self.bag.write('time', time)
+                self.bag.write('position_Optitrack', pose_LQR_msg)
+                self.bag.write('vel_Optitrack', vel_LQR_msg)
+                self.bag.write('position_estimate_topic', position_estimate_msg)
+                self.bag.write('vel_estimate_topic', vel_estimate_msg)
+                self.bag.write('desired_position', desired_position_msg)
+                self.bag.write('desired_vel', desired_vel_msg)
+                self.bag.write('reference_vel', ref_vel_msg)
+                self.bag.write('position_gaussian_error', position_gaussian_error_msg)
+                self.bag.write('control_input', control_input_msg)
+                self.bag.write('raw_control_reference', raw_control_reference_msg)
+                self.bag.write('control_sent', control_sent_msg)
+                self.bag.write('crazyflieLog', log_msg)   
                 self.bag.write('optitrack_pose', optitrack_msg)  
+            else:
+                write_flag = True
 
     def handle_trajectory(self, req):
         self.compute_controller_flag = True
