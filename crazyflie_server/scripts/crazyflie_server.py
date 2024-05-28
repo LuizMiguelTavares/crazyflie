@@ -48,6 +48,9 @@ class CrazyflieServerNode:
         self._cf.param.set_value("stabilizer.estimator", 3)   # 1 = Complementary filter, 2 = EKF, 3 = unscented Kalman filter
         self._cf.param.set_value("ctrlMel.ki_m_z", 0)
         self._cf.param.set_value("ctrlMel.i_range_m_z", 0)
+        self._cf.param.set_value("pid_attitude.pitch_ki", 0)
+        self._cf.param.set_value("pid_attitude.roll_ki", 0)
+        self._cf.param.set_value("pid_attitude.yaw_ki", 0)
 
         ################### CRAZYFLIE TOPICS #######################
         self.pose_subscriber = rospy.Subscriber(f"cmd_vel", 
