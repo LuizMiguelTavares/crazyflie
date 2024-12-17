@@ -1,0 +1,4 @@
+stabilizer_controller: 1 # 1 = PID, 2 = Mellinger, 3 = INDI, 4 = Brescianini
+stabilizer_estimator: 3  # 1 = Complementary filter, 2 = EKF, 3 = unscented Kalman filter
+
+ID: 6 # Number of the Crazyflie to connect to (1-8)

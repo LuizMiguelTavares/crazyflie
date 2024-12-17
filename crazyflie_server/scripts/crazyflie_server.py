@@ -29,11 +29,54 @@ class CrazyflieServerNode:
         self._cf.connection_failed.add_callback(self._connection_failed)
         self._cf.connection_lost.add_callback(self._connection_lost)        
 
-        uri_ = rospy.get_param('~uri', None)
+        ID = rospy.get_param('~ID', None)
         
+        if ID == 1:
+            uri_ = "radio://0/10/2M/E7E7E7E701"
+        elif ID == 2:
+            uri_ = "radio://0/10/2M/E7E7E7E702"
+        elif ID == 3:
+            uri_ = "radio://0/10/2M/E7E7E7E703"
+        elif ID == 4:
+            uri_ = "radio://0/10/2M/E7E7E7E704"
+        elif ID == 5:
+            uri_ = "radio://0/20/2M/E7E7E7E705"
+        elif ID == 6:
+            uri_ = "radio://0/20/2M/E7E7E7E706"
+        elif ID == 7:
+            uri_ = "radio://0/20/2M/E7E7E7E707"
+        elif ID == 8:
+            uri_ = "radio://0/50/2M/E7E7E7E708"
+        else:
+            raise Exception(f"Invalid ID: {ID}")    
+            
         if not rospy.has_param('~uri'):
             raise Exception(f"Required parameter 'uri' not set")
-
+        
+        stabilizer_controller = rospy.get_param('~stabilizer_controller', 1)
+        
+        if stabilizer_controller == 1:
+            rospy.loginfo("Stabilizer controller set to PID")
+        elif stabilizer_controller == 2:
+            rospy.loginfo("Stabilizer controller set to Mellinger")
+        elif stabilizer_controller == 3:
+            rospy.loginfo("Stabilizer controller set to INDI")
+        elif stabilizer_controller == 4:
+            rospy.loginfo("Stabilizer controller set to Brescianini")
+        else:
+            raise Exception(f"Invalid stabilizer controller: {stabilizer_controller}")
+        
+        stabilizer_esimator = rospy.get_param('~stabilizer_estimator', 3)
+        
+        if stabilizer_esimator == 1:
+            rospy.loginfo("Stabilizer estimator set to Complementary filter")
+        elif stabilizer_esimator == 2:
+            rospy.loginfo("Stabilizer estimator set to EKF")
+        elif stabilizer_esimator == 3:
+            rospy.loginfo("Stabilizer estimator set to unscented Kalman filter")
+        else:
+            raise Exception(f"Invalid stabilizer estimator: {stabilizer_esimator}")
+        
         # Opening crazyflie link
         uri = uri_helper.uri_from_env(default=uri_)
         self._cf.open_link(uri)
@@ -44,8 +87,8 @@ class CrazyflieServerNode:
         ################### CRAZYFLIE PARAMETERS #######################
 
         # Setting Crazyflie parameters
-        self._cf.param.set_value("stabilizer.controller", 1)  # 1 = PID, 2 = Mellinger, 3 = INDI, 4 = Brescianini
-        self._cf.param.set_value("stabilizer.estimator", 3)   # 1 = Complementary filter, 2 = EKF, 3 = unscented Kalman filter
+        self._cf.param.set_value("stabilizer.controller", stabilizer_controller)  # 1 = PID, 2 = Mellinger, 3 = INDI, 4 = Brescianini
+        self._cf.param.set_value("stabilizer.estimator", stabilizer_esimator)   # 1 = Complementary filter, 2 = EKF, 3 = unscented Kalman filter
         self._cf.param.set_value("ctrlMel.ki_m_z", 0)
         self._cf.param.set_value("ctrlMel.i_range_m_z", 0)
         self._cf.param.set_value("pid_attitude.pitch_ki", 0)
@@ -53,7 +96,7 @@ class CrazyflieServerNode:
         self._cf.param.set_value("pid_attitude.yaw_ki", 0)
 
         ################### CRAZYFLIE TOPICS #######################
-        self.pose_subscriber = rospy.Subscriber(f"cmd_vel", 
+        self.pose_subscriber = rospy.Subscriber(f"cmd_vel",
                                                 Twist, 
                                                 self.publish_twist)
         

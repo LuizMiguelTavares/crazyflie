@@ -57,7 +57,8 @@
   <exec_depend>std_msgs</exec_depend>
   <build_depend>message_generation</build_depend>
   <exec_depend>message_runtime</exec_depend>
-
+  <exec_depend>cflib</exec_depend>
+  <exec_depend>joy</exec_depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
