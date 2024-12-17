@@ -40,10 +40,10 @@ class CrazyflieLQRNode:
         self.theta_trim = rospy.get_param("~theta_trim", 0.0)
         self.phi_trim = rospy.get_param("~phi_trim", 0.0)
         self.print_controller = rospy.get_param("~print_controller", False)
-        self.bag = rosbag.Bag(
-            "/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/Testes.bag",
-            "w",
-        )
+        # self.bag = rosbag.Bag(
+        #     "/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/Testes.bag",
+        #     "w",
+        # )
 
         # Matrices A, B, C, D
         self.A = np.array(
@@ -133,8 +133,8 @@ class CrazyflieLQRNode:
 
         self.wait_rate = rospy.Rate(2)
         self.timer = rospy.Timer(rospy.Duration(1 / 4), self.prints)
-        self.bag_timer = rospy.Timer(rospy.Duration(self.hz), self.save_bag_timer)
-        self.bag_write_lock = Lock()
+        # self.bag_timer = rospy.Timer(rospy.Duration(self.hz), self.save_bag_timer)
+        # self.bag_write_lock = Lock()
         self.is_bag_open = True
         rospy.on_shutdown(self.shutdown_hook)
         rospy.loginfo("Crazyflie LQR Node started")
@@ -411,25 +411,25 @@ class CrazyflieLQRNode:
                     self.elapsed_circle_time = 0
                     self.circle_time = rospy.Time.now().to_sec()
 
-                # Circle
-                # x = x_radius * np.cos(angular_velocity * elapsed_time)
-                # y = y_radius * np.sin(angular_velocity * elapsed_time)
-                # z = self.desired_z_height
-                #
-                # vx = (
-                #     -x_radius
-                #     * angular_velocity
-                #     * np.sin(angular_velocity * elapsed_time)
-                # )
-                # vy = (
-                #     y_radius
-                #     * angular_velocity
-                #     * np.cos(angular_velocity * elapsed_time)
-                # )
-                # vz = 0
-                #
-                # psi_desired = np.arctan2(vy, vx)
-                # psi_dot_ref = angular_velocity
+                ### Circle
+                x = x_radius * np.cos(angular_velocity * elapsed_time)
+                y = y_radius * np.sin(angular_velocity * elapsed_time)
+                z = self.desired_z_height
+                
+                vx = (
+                    -x_radius
+                    * angular_velocity
+                    * np.sin(angular_velocity * elapsed_time)
+                )
+                vy = (
+                    y_radius
+                    * angular_velocity
+                    * np.cos(angular_velocity * elapsed_time)
+                )
+                vz = 0
+                
+                psi_desired = np.arctan2(vy, vx)
+                psi_dot_ref = angular_velocity
 
                 # # Lemniscata
                 # x = x_radius * np.cos(angular_velocity * elapsed_time)
@@ -469,66 +469,66 @@ class CrazyflieLQRNode:
 
                 # # # Waypoints
 
-                waypoints = np.array(
-                    [
-                        [-1.8, 1.2, 0.7],
-                        [2.2, -1.2, 1.3],
-                        [-1.8, -1.2, 0.7],
-                        [2.2, 1.2, 1.3],
-                    ]
-                )  # Rain
-                waypoints = np.array(
-                    [[-2, 1.2, 0.8], [2, -1.2, 1.5], [-2, -1.2, 0.8], [2, 1.2, 1.5]]
-                )  # 0fficial
-                waypoints = np.array(
-                    [[-1, 1, 0.8], [1.5, -1, 1.5], [-1, -1, 0.8], [1.5, 1, 1.5]]
-                )  # Camera
+                # waypoints = np.array(
+                #     [
+                #         [-1.8, 1.2, 0.7],
+                #         [2.2, -1.2, 1.3],
+                #         [-1.8, -1.2, 0.7],
+                #         [2.2, 1.2, 1.3],
+                #     ]
+                # )  # Rain
+                # waypoints = np.array(
+                #     [[-2, 1.2, 0.8], [2, -1.2, 1.5], [-2, -1.2, 0.8], [2, 1.2, 1.5]]
+                # )  # 0fficial
+                # waypoints = np.array(
+                #     [[-1, 1, 0.8], [1.5, -1, 1.5], [-1, -1, 0.8], [1.5, 1, 1.5]]
+                # )  # Camera
 
-                waypoint_time = 6
+                # waypoint_time = 6
 
-                if self.elapsed_circle_time < waypoint_time:
-                    x = waypoints[0, 0]
-                    y = waypoints[0, 1]
-                    z = waypoints[0, 2]
+                # if self.elapsed_circle_time < waypoint_time:
+                #     x = waypoints[0, 0]
+                #     y = waypoints[0, 1]
+                #     z = waypoints[0, 2]
 
-                    vx = 0
-                    vy = 0
-                    vz = 0
-                elif self.elapsed_circle_time < 2 * waypoint_time:
-                    x = waypoints[1, 0]
-                    y = waypoints[1, 1]
-                    z = waypoints[1, 2]
+                #     vx = 0
+                #     vy = 0
+                #     vz = 0
+                # elif self.elapsed_circle_time < 2 * waypoint_time:
+                #     x = waypoints[1, 0]
+                #     y = waypoints[1, 1]
+                #     z = waypoints[1, 2]
 
-                    vx = 0
-                    vy = 0
-                    vz = 0
-                elif self.elapsed_circle_time < 3 * waypoint_time:
-                    x = waypoints[2, 0]
-                    y = waypoints[2, 1]
-                    z = waypoints[2, 2]
+                #     vx = 0
+                #     vy = 0
+                #     vz = 0
+                # elif self.elapsed_circle_time < 3 * waypoint_time:
+                #     x = waypoints[2, 0]
+                #     y = waypoints[2, 1]
+                #     z = waypoints[2, 2]
 
-                    vx = 0
-                    vy = 0
-                    vz = 0
-                elif self.elapsed_circle_time < 4 * waypoint_time:
-                    x = waypoints[3, 0]
-                    y = waypoints[3, 1]
-                    z = waypoints[3, 2]
+                #     vx = 0
+                #     vy = 0
+                #     vz = 0
+                # elif self.elapsed_circle_time < 4 * waypoint_time:
+                #     x = waypoints[3, 0]
+                #     y = waypoints[3, 1]
+                #     z = waypoints[3, 2]
 
-                    vx = 0
-                    vy = 0
-                    vz = 0
-                else:
-                    x = waypoints[0, 0]
-                    y = waypoints[0, 1]
-                    z = waypoints[0, 2]
+                #     vx = 0
+                #     vy = 0
+                #     vz = 0
+                # else:
+                #     x = waypoints[0, 0]
+                #     y = waypoints[0, 1]
+                #     z = waypoints[0, 2]
 
-                    vx = 0
-                    vy = 0
-                    vz = 0
+                #     vx = 0
+                #     vy = 0
+                #     vz = 0
 
-                psi_desired = 0
-                psi_dot_ref = 0
+                # psi_desired = 0
+                # psi_dot_ref = 0
 
                 # # # Eight
                 # centers = [-1, 1]
