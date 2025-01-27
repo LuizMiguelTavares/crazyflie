@@ -50,7 +50,7 @@ class CrazyflieServerNode:
         else:
             raise Exception(f"Invalid ID: {ID}")    
             
-        if not rospy.has_param('~uri'):
+        if not rospy.has_param('~ID'):
             raise Exception(f"Required parameter 'uri' not set")
         
         stabilizer_controller = rospy.get_param('~stabilizer_controller', 1)
