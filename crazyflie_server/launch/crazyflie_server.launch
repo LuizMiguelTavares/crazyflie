@@ -1,5 +1,4 @@
 <launch>
-    <node pkg="joy" type="joy_node" name="joy_node" output="screen"/>
     <arg name="namespace" default="cf1" />
     
     <group ns="cf1">
