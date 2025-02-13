@@ -1,9 +1,11 @@
 <launch>
     <arg name="namespace" default="cf1" />
+    <arg name="ID" default="" /> 
     
     <group ns="cf1">
         <node pkg="crazyflie_server" type="crazyflie_server.py" name="crazyflie_server_node" output="screen">
             <rosparam file="$(find crazyflie_server)/config/crazyflie_config.yaml" command="load" />
+            <param if="$(eval arg('ID') != '')" name="ID" value="$(arg ID)" />
         </node>
     </group>
 </launch>
