@@ -6,7 +6,7 @@ import cflib
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.utils import uri_helper
-from crazyflie_msgs.msg import CrazyflieLog
+# from crazyflie_msgs.msg import CrazyflieLog
 
 class CrazyflieServerNode:
     def __init__(self):
