@@ -143,6 +143,25 @@ class CrazyflieServerNode:
         has been connected and the TOCs have been downloaded."""
         rospy.loginfo(f'Crazyflie {link_uri} connected!')
         rospy.sleep(1)
+        
+        if self.vel_LOG:
+            self._lg_vel = LogConfig(name='Velocity in the drone frame', period_in_ms=1000/60)
+            self._lg_vel.add_variable('stateEstimate.vx', 'float')
+            self._lg_vel.add_variable('stateEstimate.vy', 'float')
+            self._lg_vel.add_variable('stateEstimate.vz', 'float')
+            self._lg_vel.add_variable('stateEstimate.z', 'float')
+
+            try:
+                rospy.loginfo("Adding velocity log...")
+                self._cf.log.add_config(self._lg_vel)
+                self._lg_vel.data_received_cb.add_callback(self._vel_log_data)
+                self._lg_vel.error_cb.add_callback(self._vel_log_error)
+                self._lg_vel.start()
+            except KeyError as e:
+                print('Could not start log configuration,'
+                    '{} not found in TOC'.format(str(e)))
+            except AttributeError:
+                print('Could not add Stabilizer log config, bad configuration.')
 
         if self.thrust_LOG:
             self._lg_thrust = LogConfig(name='thrust', period_in_ms=1000/60)
