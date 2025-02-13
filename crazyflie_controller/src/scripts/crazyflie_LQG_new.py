@@ -8,7 +8,7 @@ import tf.transformations as tf_trans
 from aurora_py.controllers import FeedForwardLQR
 from aurora_py.kalman_filter import ExtendedKalmanFilter as EKF
 from crazyflie_msgs.msg import CrazyflieLog
-from geometry_msgs.msg import PoseStamped, Twist, Vector3
+from geometry_msgs.msg import PoseStamped, Twist, Vector3, Vector3Stamped
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Float32
 from std_srvs.srv import Empty
@@ -31,6 +31,12 @@ class CrazyflieLQRNode:
 
         self.ang_max = rospy.get_param("~ang_max", 15.0)
         self.is_LQG = rospy.get_param("~is_LQG", False)
+        self.use_orientation_on_pose = rospy.get_param(
+            "~use_orientation_on_pose", False
+        )
+        pose_topic = rospy.get_param("~pose_topic", "/natner_ros/cf1/pose")
+        orientation_topic = rospy.get_param("~orientation_topic", "/cf1/crazyflieAng")
+        
         self.circle_flag = False
         self.psi_ref_max = 100
         self.desired_z_height = 1
@@ -39,7 +45,7 @@ class CrazyflieLQRNode:
         self.print_kalman = rospy.get_param("~print_kalman", False)
         self.theta_trim = rospy.get_param("~theta_trim", 0.0)
         self.phi_trim = rospy.get_param("~phi_trim", 0.0)
-        self.print_controller = rospy.get_param("~print_controller", False)
+        self.print_controller = rospy.get_param("~print_controller", True)
         # self.bag = rosbag.Bag(
         #     "/home/miguel/catkin_ws/src/crazyflie/crazyflie_controller/src/data/Testes.bag",
         #     "w",
@@ -99,7 +105,10 @@ class CrazyflieLQRNode:
         self.emergency_flag_is_true = False
         self.pose_is_true = False
         self.joy_is_true = False
-        self.crazyflie_LOG_flag = False
+        # self.crazyflie_LOG_flag = False
+        self.crazyflie_angle_is_true = False
+        self.crazyflie_vel_is_true = False
+        self.crazyflie_thrust_is_true = False
 
         # Message to stop the drone
         self.stop_msg = Twist()
@@ -112,7 +121,19 @@ class CrazyflieLQRNode:
 
         # Subscriber for pose
         self.pose_subscriber = rospy.Subscriber(
-            f"/vrpn_client_node{self.namespace}pose", PoseStamped, self.pose_callback
+            pose_topic, PoseStamped, self.pose_callback
+        )
+        
+        self.orientation_subscriber = rospy.Subscriber(
+            orientation_topic, Vector3Stamped, self.crazyflie_orientation_callback
+        )
+        
+        self.velocity_subscriber = rospy.Subscriber(
+            "/cf1/crazyflieVel", Vector3Stamped, self.crazyflie_vel_callback
+        )
+        
+        self.thrust_subscriber = rospy.Subscriber(
+            "/cf1/crazyflieThrust", Vector3Stamped, self.crazyflie_thrust_callback
         )
 
         # Subscriber for the joystick
@@ -124,9 +145,9 @@ class CrazyflieLQRNode:
             "start_trajectory", Empty, self.handle_trajectory
         )
 
-        self.crazyflie_LOG = rospy.Subscriber(
-            "crazyflieLog", CrazyflieLog, self.crazyflie_log_callback
-        )
+        # self.crazyflie_LOG = rospy.Subscriber(
+        #     "crazyflieLog", CrazyflieLog, self.crazyflie_log_callback
+        # )
 
         self.hz = 1 / 30
         self.rate = rospy.Rate(1 / self.hz)
@@ -139,18 +160,37 @@ class CrazyflieLQRNode:
         rospy.on_shutdown(self.shutdown_hook)
         rospy.loginfo("Crazyflie LQR Node started")
 
-    def crazyflie_log_callback(self, msg):
-        self.crazyflie_LOG_flag = True
-        self.Log_msg = msg
-        self.vx = msg.vx
-        self.vy = msg.vy
-        self.vz = msg.vz
-        self.z = msg.z
-        self.pitch = -msg.pitch
-        self.roll = msg.roll
-        self.yaw = msg.yaw
-        self.true_thrust = msg.thrust
-
+    # def crazyflie_log_callback(self, msg):
+    #     self.crazyflie_LOG_flag = True
+    #     self.Log_msg = msg
+    #     self.vx = msg.vx
+    #     self.vy = msg.vy
+    #     self.vz = msg.vz
+    #     self.z = msg.z
+    #     self.pitch = -msg.pitch
+    #     self.roll = msg.roll
+    #     self.yaw = msg.yaw
+    #     self.true_thrust = msg.thrust
+         
+    def crazyflie_orientation_callback(self, msg):
+        self.crazyflie_angle_is_true = True
+        self.crazyflie_orientation = msg
+        self.roll = msg.vector.x
+        self.pitch = msg.vector.y
+        self.yaw = msg.vector.z
+    
+    def crazyflie_vel_callback(self, msg):
+        self.crazyflie_vel_is_true = True
+        self.crazyflie_vel = msg
+        self.vx = msg.vector.x
+        self.vy = msg.vector.y
+        self.vz = msg.vector.z
+        
+    def crazyflie_thrust_callback(self, msg):
+        self.crazyflie_thrust_is_true = True
+        self.crazyflie_thrust = msg
+        self.true_thrust = msg.vector.z
+        
     def shutdown_hook(self):
         with self.bag_write_lock:
             self.is_bag_open = False
@@ -261,9 +301,18 @@ class CrazyflieLQRNode:
         cf_LQR = FeedForwardLQR(self.A, self.B, self.C, self.D, self.Q, self.R)
 
         while not rospy.is_shutdown():
-
             if not self.compute_controller_flag:
                 self.rate.sleep()
+                continue
+                
+            if not self.crazyflie_angle_is_true or not self.crazyflie_vel_is_true or not self.crazyflie_thrust_is_true:
+                self.rate.sleep()
+                if not self.crazyflie_angle_is_true:
+                    rospy.loginfo("Waiting for the crazyflie angle!")
+                if not self.crazyflie_vel_is_true:
+                    rospy.loginfo("Waiting for the crazyflie velocity!")
+                if not self.crazyflie_thrust_is_true:
+                    rospy.loginfo("Waiting for the crazyflie thrust!")                    
                 continue
 
             if not self.pose_is_true:
@@ -275,11 +324,16 @@ class CrazyflieLQRNode:
                     counter = 0
                 self.wait_rate.sleep()
                 continue
-
+            
             if self.is_landing:
                 self.rate.sleep()
                 continue
-
+            
+            if not self.use_orientation_on_pose:
+                self.pose[3] = self.roll
+                self.pose[4] = self.pitch
+                self.pose[5] = self.yaw
+            
             pose = self.pose
             pose_time = self.pose_time
 
@@ -622,9 +676,10 @@ class CrazyflieLQRNode:
             self.compute_controller_is_true = True
 
     def prints(self, req):
+        
         if not self.compute_controller_is_true:
             return
-
+        print(f"print {self.theta_ref}")
         if self.print_kalman:
             print(f"Measure : {np.round(self.pose_LQR, 3)}")
             try:
@@ -726,7 +781,11 @@ class CrazyflieLQRNode:
                 ) = (self.theta_ref, self.phi_ref, self.psi_ref, self.thrust_ref)
 
                 ### Log
-                log_msg = self.Log_msg
+                # log_msg = self.Log_msg
+                
+                crazyflie_vel_msg = self.crazyflie_vel
+                crazyflie_thrust_msg = self.crazyflie_thrust
+                crazyflie_angle_msg = self.crazyflie_orientation
 
                 ### Optitrack
                 optitrack_msg = self.optitrack_pose
@@ -747,7 +806,10 @@ class CrazyflieLQRNode:
                 self.bag.write("control_input", control_input_msg)
                 self.bag.write("raw_control_reference", raw_control_reference_msg)
                 self.bag.write("control_sent", control_sent_msg)
-                self.bag.write("crazyflieLog", log_msg)
+                self.bag.write("crazyflie_vel", crazyflie_vel_msg)
+                self.bag.write("crazyflie_thrust", crazyflie_thrust_msg)
+                self.bag.write("crazyflie_angle", crazyflie_angle_msg)
+                # self.bag.write("crazyflieLog", log_msg)
                 self.bag.write("optitrack_pose", optitrack_msg)
             else:
                 write_flag = True
