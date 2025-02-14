@@ -22,7 +22,7 @@ class CrazyflieLQRNode:
         self.m = 0.035  # mass of the drone in kg
         self.g = 9.81  # gravity
         self.Kp = 1  # Proportional gain
-        self.a_max = 14.3
+        self.a_max = 17
         kvx = 0.03
         kvy = 0.03
         kvz = 0
@@ -34,14 +34,14 @@ class CrazyflieLQRNode:
         self.use_orientation_on_pose = rospy.get_param(
             "~use_orientation_on_pose", False
         )
-        pose_topic = rospy.get_param("~pose_topic", "/natner_ros/cf1/pose")
+        pose_topic = rospy.get_param("~pose_topic", "/natnet_ros/cf1/pose")
         orientation_topic = rospy.get_param("~orientation_topic", "/cf1/crazyflieAng")
         
         self.circle_flag = False
         self.psi_ref_max = 100
         self.desired_z_height = 1
         self.ang_max_rad = np.deg2rad(self.ang_max)
-        self.dont_takeoff = rospy.get_param("~dont_takeoff", True)
+        self.dont_takeoff = rospy.get_param("~dont_takeoff", False)
         self.print_kalman = rospy.get_param("~print_kalman", False)
         self.theta_trim = rospy.get_param("~theta_trim", 0.0)
         self.phi_trim = rospy.get_param("~phi_trim", 0.0)
@@ -158,7 +158,7 @@ class CrazyflieLQRNode:
         # self.bag_write_lock = Lock()
         self.is_bag_open = True
         rospy.on_shutdown(self.shutdown_hook)
-        rospy.loginfo("Crazyflie LQR Node started")
+        rospy.loginfo("Crazyflie LQG Node started")
 
     # def crazyflie_log_callback(self, msg):
     #     self.crazyflie_LOG_flag = True
@@ -613,7 +613,7 @@ class CrazyflieLQRNode:
                 # ax = -x_radius * angular_velocity**2 * np.cos(angular_velocity * elapsed_time)
                 # ay = -y_radius * angular_velocity**2 * np.sin(angular_velocity * elapsed_time)
                 # az = 0
-
+            self.goto_center = True
             if self.goto_center:
                 desired_position_velocity = np.array(
                     [0, 0, self.desired_z_height, 0, 0, 0]
@@ -679,7 +679,7 @@ class CrazyflieLQRNode:
         
         if not self.compute_controller_is_true:
             return
-        print(f"print {self.theta_ref}")
+
         if self.print_kalman:
             print(f"Measure : {np.round(self.pose_LQR, 3)}")
             try:
@@ -691,7 +691,7 @@ class CrazyflieLQRNode:
 
         if self.print_controller:
             print(
-                f"LQR_controller : {[float(np.round(val, 3)) for val in [self.theta_ref, self.phi_ref, self.psi_ref, self.thrust_ref/60000]]}"
+                f"LQR_controller : {[float(np.round(val, 3)) for val in [self.theta_ref, -self.phi_ref, self.psi_ref, self.thrust_ref/60000]]}"
             )
 
     def save_bag_timer(self, req):
@@ -816,7 +816,9 @@ class CrazyflieLQRNode:
 
     def handle_trajectory(self, req):
         self.compute_controller_flag = True
-
+        idle_time = 3
+        self.idle_flag = False
+        
         while not rospy.is_shutdown():
             if self.is_landing:
                 self.rate.sleep()
@@ -845,13 +847,22 @@ class CrazyflieLQRNode:
                     thrust_ref = min(max(thrust_ref, 40000), 60000)
 
             pub_controller = Twist()
-            pub_controller.linear.x = theta_ref
-            pub_controller.linear.y = phi_ref
+            pub_controller.angular.x = np.deg2rad(-phi_ref)
+            pub_controller.angular.y = np.deg2rad(theta_ref)
             pub_controller.linear.z = thrust_ref
-            pub_controller.angular.z = psi_ref
+            pub_controller.angular.z = np.deg2rad(psi_ref)
             if not self.dont_takeoff:
-                self.control_publish.publish(pub_controller)
-                pass
+                if not self.idle_flag:
+                    self.idle_initial_time = rospy.Time.now().to_sec()
+                    self.idle_flag = True
+                
+                if rospy.Time.now().to_sec() - self.idle_initial_time < idle_time:
+                    pub_idle = Twist()
+                    pub_idle.linear.z = 12000
+                    self.control_publish.publish(pub_idle)
+                    self.rate.sleep()
+                else:
+                    self.control_publish.publish(pub_controller)
 
             self.rate.sleep()
 

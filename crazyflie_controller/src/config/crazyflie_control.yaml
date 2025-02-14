@@ -1,6 +1,6 @@
 dont_takeoff: False
 print_kalman: False
-print_controller: False
+print_controller: True
 ang_max: 20
 
 is_LQG: True
@@ -11,7 +11,6 @@ phi_trim: 0.0
 # uri: "radio://0/10/2M/E7E7E7E702"
 # uri: "radio://0/10/2M/E7E7E7E703"
 # uri: "radio://0/10/2M/E7E7E7E704"
-uri: "radio://0/20/2M/E7E7E7E705"
+# uri: "radio://0/20/2M/E7E7E7E705"
 # uri: "radio://0/20/2M/E7E7E7E707"
 # uri: "radio://0/50/2M/E7E7E7E708"
-
