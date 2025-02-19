@@ -2,6 +2,7 @@
 import rospy
 
 from geometry_msgs.msg import  Twist, Vector3Stamped
+from std_msgs.msg import String, Bool
 import cflib
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
@@ -23,6 +24,7 @@ class CrazyflieServerNode:
         self.acc_flag = False
         self.gyro_raw_flag = False
         self.gyro_flag = False
+        self.supervisor_flag = False
 
         # Crazyflie connection callbacks
         self._cf.connected.add_callback(self._connected)
@@ -135,6 +137,10 @@ class CrazyflieServerNode:
             self.pub_raw_gyro = rospy.Publisher('crazyflieRawAngRate', Vector3Stamped, queue_size=10)
         if self.gyro_LOG:
             self.pub_gyro = rospy.Publisher('crazyflieAngRate', Vector3Stamped, queue_size=10)
+        
+        self.pub_supervisor = rospy.Publisher('crazyflieSupervisor', String, queue_size=10)
+        self.pub_is_flying = rospy.Publisher('crazyflieIsFlying', Bool, queue_size=10)
+        self.pub_can_fly = rospy.Publisher('crazyflieCanFly', Bool, queue_size=10)
 
         self.timer = rospy.Timer(rospy.Duration(1.0/60.0), self._send_log_data)
 
@@ -143,6 +149,21 @@ class CrazyflieServerNode:
         has been connected and the TOCs have been downloaded."""
         rospy.loginfo(f'Crazyflie {link_uri} connected!')
         rospy.sleep(1)
+        
+        self._lg_supervisor = LogConfig(name='Supervisor', period_in_ms=1000/60)
+        self._lg_supervisor.add_variable('supervisor.info', 'uint16_t')
+        
+        try :
+            rospy.loginfo("Adding supervisor log...")
+            self._cf.log.add_config(self._lg_supervisor)
+            self._lg_supervisor.data_received_cb.add_callback(self._supervisor_log_data)
+            self._lg_supervisor.error_cb.add_callback(self._supervisor_log_error)
+            self._lg_supervisor.start()
+        except KeyError as e:
+            print('Could not start log configuration,'
+                '{} not found in TOC'.format(str(e)))
+        except AttributeError:
+            print('Could not add Stabilizer log config, bad configuration.')
         
         if self.vel_LOG:
             self._lg_vel = LogConfig(name='Velocity in the drone frame', period_in_ms=1000/60)
@@ -265,6 +286,10 @@ class CrazyflieServerNode:
     def _disconnected(self, link_uri):
         """Callback when the Crazyflie is disconnected (called in all cases)"""
         rospy.loginfo('Disconnected from %s' % link_uri)
+        
+    def _supervisor_log_error(self, logconf, msg):
+        """Callback from the log API when an error occurs"""
+        print('Error when logging %s: %s' % (logconf.name, msg))
 
     def _vel_log_error(self, logconf, msg):
         """Callback from the log API when an error occurs"""
@@ -289,6 +314,82 @@ class CrazyflieServerNode:
     def _gyro_log_error(self, logconf, msg):
         """Callback from the log API when an error occurs"""
         print('Error when logging %s: %s' % (logconf.name, msg))
+        
+    def _supervisor_log_data(self, timestamp, data, logconf):
+        """Callback from a the log API when data arrives"""
+        if not self.supervisor_flag:
+            rospy.loginfo("Supervisor log started")
+            self.supervisor_flag = True
+        self.supervisor_info = data.get('supervisor.info', 0)
+        
+        # Extract the first 6 bits of the supervisor_info separately
+        bit_0 = (self.supervisor_info >> 0) & 1
+        bit_1 = (self.supervisor_info >> 1) & 1
+        bit_2 = (self.supervisor_info >> 2) & 1
+        bit_3 = (self.supervisor_info >> 3) & 1
+        bit_4 = (self.supervisor_info >> 4) & 1
+        bit_5 = (self.supervisor_info >> 5) & 1
+        bit_6 = (self.supervisor_info >> 6) & 1
+        
+        # Bit 0 = Can be armed - the system can be armed and will accept an arming command 
+        
+        if bit_0:
+            string_0 = "Can be armed=true, "
+        else:
+            string_0 = "Can be armed=false, "
+        
+        if bit_1:
+            string_1 = "Is armed=true, "
+        else:
+            string_1 = "Is armed=false, "
+        
+        if bit_2:
+            string_2 = "Auto arm=true, "
+        else:
+            string_2 = "Auto arm=false, "
+        
+        if bit_3:
+            string_3 = "Can fly=true, "
+        else:
+            string_3 = "Can fly=false, "
+            
+        if bit_4:
+            string_4 = "Is flying=true, "
+        else:
+            string_4 = "Is flying=false, "
+            
+        if bit_5:
+            string_5 = "Is tumbled=true, "
+        else:
+            string_5 = "Is tumbled=false, "
+            
+        if bit_6:
+            string_6 = "Is locked=true"
+        else:
+            string_6 = "Is locked=false"
+            
+        string_message = string_0 + string_1 + string_2 + string_3 + string_4 + string_5 + string_6
+        
+        if bit_3:
+            self.pub_can_fly.publish(True)
+        else:
+            self.pub_can_fly.publish(False)
+            
+        if bit_4:
+            self.pub_is_flying.publish(True)
+        else:
+            self.pub_is_flying.publish(False)
+        
+        self.pub_supervisor.publish(string_message)
+        
+        # Bit 1 = is armed - the system is armed 
+        # Bit 2 = auto arm - the system is configured to automatically arm 
+        # Bit 3 = can fly - the Crazyflie is ready to fly 
+        # Bit 4 = is flying - the Crazyflie is flying. 
+        # Bit 5 = is tumbled - the Crazyflie is up side down. 
+        # Bit 6 = is locked - the Crazyflie is in the locked state and must be restarted.
+
+        # rospy.loginfo(f"Bit 0: {bit_0}, Bit 1: {bit_1}, Bit 2: {bit_2}, Bit 3: {bit_3}, Bit 4: {bit_4}, Bit 5: {bit_5}")
 
     def _vel_log_data(self, timestamp, data, logconf):
         """Callback from a the log API when data arrives"""
