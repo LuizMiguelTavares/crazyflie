@@ -2,7 +2,7 @@
 import rospy
 
 from geometry_msgs.msg import  Twist, Vector3Stamped
-from std_msgs.msg import String, Bool
+from std_msgs.msg import String, Bool, Float32
 import cflib
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
@@ -144,6 +144,9 @@ class CrazyflieServerNode:
         self.pub_is_flying = rospy.Publisher('crazyflieIsFlying', Bool, queue_size=10)
         self.pub_can_fly = rospy.Publisher('crazyflieCanFly', Bool, queue_size=10)
         self.pub_z_range = rospy.Publisher('crazyflieZRange', Vector3Stamped, queue_size=10)
+        self.pub_battery_voltage = rospy.Publisher('crazyflieBatteryVoltage', Float32, queue_size=10)
+        self.pub_battery_level = rospy.Publisher('crazyflieBatteryLevel', Float32, queue_size=10)
+        
         # self.pub_flow_vel = rospy.Publisher('crazyflieFlowVel', Vector3Stamped, queue_size=10) # Still not working
 
         self.timer = rospy.Timer(rospy.Duration(1.0/60.0), self._send_log_data)
@@ -185,6 +188,24 @@ class CrazyflieServerNode:
             rospy.logerr(f"Could not start log configuration: {str(e)}")
         except AttributeError:
             rospy.logerr("Could not add optical flow log config, bad configuration.")
+            
+        
+        # Battery log
+        self._lg_battery = LogConfig(name='Battery', period_in_ms=1000/60)
+        self._lg_battery.add_variable('pm.vbat', 'float')
+        self._lg_battery.add_variable('pm.batteryLevel', 'int8_t')
+        
+        try:
+            rospy.loginfo("Adding battery log...")
+            self._cf.log.add_config(self._lg_battery)
+            self._lg_battery.data_received_cb.add_callback(self._battery_log_data)
+            self._lg_battery.error_cb.add_callback(self._battery_log_error)
+            self._lg_battery.start()
+        except KeyError as e:
+            print('Could not start log configuration,'
+                '{} not found in TOC'.format(str(e)))
+        except AttributeError:
+            print('Could not add Stabilizer log config, bad configuration.')
 
         if self.vel_LOG:
             self._lg_vel = LogConfig(name='Velocity in the drone frame', period_in_ms=1000/60)
@@ -323,7 +344,11 @@ class CrazyflieServerNode:
     def _flow_log_error(self, logconf, msg):
         """Callback from the log API when an error occurs"""
         print('Error when logging %s: %s' % (logconf.name, msg))
-
+        
+    def _battery_log_error(self, logconf, msg):
+        """Callback from the log API when an error occurs"""
+        print('Error when logging %s: %s' % (logconf.name, msg))
+    
     def _vel_log_error(self, logconf, msg):
         """Callback from the log API when an error occurs"""
         print('Error when logging %s: %s' % (logconf.name, msg))
@@ -502,6 +527,21 @@ class CrazyflieServerNode:
     #     flow_vel_msg.vector.x = self.flow_vel_x
     #     flow_vel_msg.vector.y = self.flow_vel_y
     #     self.pub_flow_vel.publish(flow_vel_msg)
+    
+    def _battery_log_data(self, timestamp, data, logconf):
+        
+        battery_voltage = data.get('pm.vbat', 0)
+        battery_level = data.get('pm.batteryLevel', 0)
+        
+        # Publish the battery voltage as a ROS message
+        battery_voltage_msg = Float32()
+        battery_voltage_msg.data = battery_voltage
+        self.pub_battery_voltage.publish(battery_voltage_msg)
+        
+        # Publish the battery level as a ROS message
+        battery_level_msg = Float32()
+        battery_level_msg.data = battery_level
+        self.pub_battery_level.publish(battery_level_msg)
         
     def _vel_log_data(self, timestamp, data, logconf):
         """Callback from a the log API when data arrives"""
