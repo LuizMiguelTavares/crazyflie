@@ -25,6 +25,8 @@ class CrazyflieServerNode:
         self.gyro_raw_flag = False
         self.gyro_flag = False
         self.supervisor_flag = False
+        
+        self.old_flow_time = None
 
         # Crazyflie connection callbacks
         self._cf.connected.add_callback(self._connected)
@@ -141,6 +143,8 @@ class CrazyflieServerNode:
         self.pub_supervisor = rospy.Publisher('crazyflieSupervisor', String, queue_size=10)
         self.pub_is_flying = rospy.Publisher('crazyflieIsFlying', Bool, queue_size=10)
         self.pub_can_fly = rospy.Publisher('crazyflieCanFly', Bool, queue_size=10)
+        self.pub_z_range = rospy.Publisher('crazyflieZRange', Vector3Stamped, queue_size=10)
+        # self.pub_flow_vel = rospy.Publisher('crazyflieFlowVel', Vector3Stamped, queue_size=10) # Still not working
 
         self.timer = rospy.Timer(rospy.Duration(1.0/60.0), self._send_log_data)
 
@@ -165,6 +169,23 @@ class CrazyflieServerNode:
         except AttributeError:
             print('Could not add Stabilizer log config, bad configuration.')
         
+        # Optical flow log
+        self._lg_flow = LogConfig(name='Optical Flow', period_in_ms=1000/60) 
+        self._lg_flow.add_variable('motion.deltaX', 'float')
+        self._lg_flow.add_variable('motion.deltaY', 'float')
+        self._lg_flow.add_variable('range.zrange', 'float')
+
+        try:
+            rospy.loginfo("Adding optical flow log...")
+            self._cf.log.add_config(self._lg_flow)
+            self._lg_flow.data_received_cb.add_callback(self._flow_log_data)
+            self._lg_flow.error_cb.add_callback(self._flow_log_error)
+            self._lg_flow.start()
+        except KeyError as e:
+            rospy.logerr(f"Could not start log configuration: {str(e)}")
+        except AttributeError:
+            rospy.logerr("Could not add optical flow log config, bad configuration.")
+
         if self.vel_LOG:
             self._lg_vel = LogConfig(name='Velocity in the drone frame', period_in_ms=1000/60)
             self._lg_vel.add_variable('stateEstimate.vx', 'float')
@@ -290,6 +311,18 @@ class CrazyflieServerNode:
     def _supervisor_log_error(self, logconf, msg):
         """Callback from the log API when an error occurs"""
         print('Error when logging %s: %s' % (logconf.name, msg))
+    
+    # def _z_range_log_error(self, logconf, msg):
+    #     """Callback from the log API when an error occurs"""
+    #     print('Error when logging %s: %s' % (logconf.name, msg))
+        
+    # def _flow_vel_log_error(self, logconf, msg):
+    #     """Callback from the log API when an error occurs"""
+    #     print('Error when logging %s: %s' % (logconf.name, msg))
+    
+    def _flow_log_error(self, logconf, msg):
+        """Callback from the log API when an error occurs"""
+        print('Error when logging %s: %s' % (logconf.name, msg))
 
     def _vel_log_error(self, logconf, msg):
         """Callback from the log API when an error occurs"""
@@ -391,6 +424,85 @@ class CrazyflieServerNode:
 
         # rospy.loginfo(f"Bit 0: {bit_0}, Bit 1: {bit_1}, Bit 2: {bit_2}, Bit 3: {bit_3}, Bit 4: {bit_4}, Bit 5: {bit_5}")
 
+    def _flow_log_data(self, timestamp, data, logconf):
+        """Convert Flow Deck data to velocity in m/s"""
+        
+        delta_x = data.get('motion.deltaX', 0)  # Optical flow X
+        delta_y = data.get('motion.deltaY', 0)  # Optical flow Y
+        z_range = data.get('range.zrange', 0) / 1000.0  # Convert mm to meters
+
+        self.flow_time = timestamp
+        
+        if self.old_flow_time is None:
+            self.old_flow_time = self.flow_time
+            return
+        
+        delta_t = self.flow_time - self.old_flow_time
+        self.old_flow_time = self.flow_time
+
+        # Correct Field of View (PMW3901 sensor)
+        FOV = 0.73  # radians
+
+        # Convert pixel/frame data to velocity (m/s)
+        # v_x = -(delta_y * FOV * z_range) / delta_t
+        # v_y = -(delta_x * FOV * z_range) / delta_t
+        
+        v_x = -delta_y *z_range
+        v_y = -delta_x *z_range
+        
+        # rospy.loginfo(f"Flow velocity: {v_x}, {v_y}") # Still not working
+
+        # Publish the velocity as a ROS message
+        vel_msg = Vector3Stamped()
+        vel_msg.header.stamp = rospy.Time.from_sec(timestamp / 1000.0)
+        vel_msg.vector.x = v_x
+        vel_msg.vector.y = v_y
+        vel_msg.vector.z = 0 
+        # self.pub_flow_vel.publish(vel_msg)
+        
+        # Publish the Z range as a ROS message
+        z_range_msg = Vector3Stamped()
+        z_range_msg.header.stamp = rospy.Time.from_sec(timestamp / 1000.0)
+        z_range_msg.vector.z = z_range
+        self.pub_z_range.publish(z_range_msg)
+        # rospy.loginfo(f"Z range: {z_range}")
+
+    # def _z_range_log_data(self, timestamp, data, logconf):
+    #     """Callback from a the log API when data arrives"""
+    #     self.z_range = data.get('range.zrange', 0)
+    #     rospy.loginfo(f"Received Z-Range: {self.z_range}")
+        
+    #     # print(f"Z range: {self.z_range}")
+    #     z_range_msg = Vector3Stamped()
+    #     z_range_msg.header.stamp = rospy.Time.from_sec(timestamp / 1000.0)
+    #     z_range_msg.vector.z = self.z_range/1000
+    #     self.pub_z_range.publish(z_range_msg)
+        
+    # def _flow_vel_log_data(self, timestamp, data, logconf):
+    #     """Callback from a the log API when data arrives"""
+    #     flow_vel_x = data.get('motion.deltaX', 0)
+    #     flow_vel_y = data.get('motion.deltaY', 0)
+        
+    #     self.flow_time = timestamp
+        
+    #     if self.old_flow_time is None:
+    #         self.old_flow_time = self.flow_time
+    #         return
+        
+    #     delta_t = self.flow_time - self.old_flow_time
+    #     self.old_flow_time = self.flow_time
+        
+    #     # Convert pixel/frame data to velocity (m/s)
+    #     FOV = 4.0  # Field of view in radians
+    #     v_x = (flow_vel_x * FOV * z_range) / delta_t
+    #     v_y = (flow_vel_y * FOV * z_range) / delta_t
+            
+    #     flow_vel_msg = Vector3Stamped()
+    #     flow_vel_msg.header.stamp = rospy.Time.from_sec(timestamp / 1000.0)
+    #     flow_vel_msg.vector.x = self.flow_vel_x
+    #     flow_vel_msg.vector.y = self.flow_vel_y
+    #     self.pub_flow_vel.publish(flow_vel_msg)
+        
     def _vel_log_data(self, timestamp, data, logconf):
         """Callback from a the log API when data arrives"""
         if not self.vel_flag:
