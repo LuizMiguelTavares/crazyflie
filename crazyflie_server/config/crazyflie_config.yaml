@@ -5,9 +5,9 @@ use_body_rate: true # Send body rate reference instead of angle reference
 
 ID: 1 # Number of the Crazyflie to connect to (1-8)
 
-vel_LOG: true # Log velocity data
+vel_LOG: false # Log velocity data
 angle_LOG: true # Log angle data
 thrust_LOG: false # Log thrust data
-acc_LOG: true # Log acceleration data
-gyro_raw_LOG: true # Log raw gyro data
+acc_LOG: false # Log acceleration data
+gyro_raw_LOG: false # Log raw gyro data
 gyro_LOG: true # Log gyro data
