@@ -10,6 +10,7 @@
 #include <list>
 #include <string>
 #include <crazyflie_cpp/Crazyflie.h>
+#include <unordered_map>
 
 struct LogSupervisor {
   uint16_t info;
@@ -66,7 +67,7 @@ public:
     nh_.param("stabilizer_controller", stabilizer_controller_, 1);
     nh_.param("stabilizer_estimator",  stabilizer_estimator_,  3);
     nh_.param("plot_LOG_TOC",  plot_LOG_TOC_,  false);
-    nh_.param("LOG_freq_",  LOG_freq_,  60.0);
+    nh_.param("LOG_freq_",  LOG_freq_,  50.0);
 
     if (LOG_freq_ > 100.0){
       LOG_freq_ = 100.0;
@@ -146,20 +147,94 @@ public:
     pub_is_flying_       = nh_.advertise<std_msgs::Bool>("crazyflieIsFlying", 10);
     pub_z_range_         = nh_.advertise<geometry_msgs::Vector3Stamped>("crazyflieZRange", 10);
     pub_battery_voltage_ = nh_.advertise<std_msgs::Float32>("crazyflieBatteryVoltage", 10);
-    pub_vel_             = nh_.advertise<geometry_msgs::Vector3Stamped>("crazyflieVel", 10);
+
+    if (vel_LOG_) pub_vel_ = nh_.advertise<geometry_msgs::Vector3Stamped>("crazyflieVel", 10);
+    if (thrust_LOG_) pub_thrust_ = nh_.advertise<geometry_msgs::Vector3Stamped>("crazyflieThrust", 10);
+    if (ang_LOG_) pub_ang_ = nh_.advertise<geometry_msgs::Vector3Stamped>("crazyflieAng", 10);
+    if (acc_LOG_) pub_acc_ = nh_.advertise<geometry_msgs::Vector3Stamped>("crazyflieAcc", 10);
+    if (gyro_LOG_) pub_gyro_ = nh_.advertise<geometry_msgs::Vector3Stamped>("crazyflieAngRate", 10);
+
+    ros::AdvertiseOptions optsCanFly = ros::AdvertiseOptions::create<std_msgs::Bool>(
+      "crazyflieCanFly", 10,
+      boost::bind(&CrazyflieServerNode::connectionCallback, this, _1),
+      boost::bind(&CrazyflieServerNode::disconnectionCallback, this, _1),
+      ros::VoidPtr(), nh_.getCallbackQueue());
+    pub_can_fly_ = nh_.advertise(optsCanFly);
+
+    ros::AdvertiseOptions optsIsFlying = ros::AdvertiseOptions::create<std_msgs::Bool>(
+      "crazyflieIsFlying", 10,
+      boost::bind(&CrazyflieServerNode::connectionCallback, this, _1),
+      boost::bind(&CrazyflieServerNode::disconnectionCallback, this, _1),
+      ros::VoidPtr(), nh_.getCallbackQueue());
+    pub_is_flying_ = nh_.advertise(optsIsFlying);
+
+    ros::AdvertiseOptions optsZRange = ros::AdvertiseOptions::create<geometry_msgs::Vector3Stamped>(
+      "crazyflieZRange", 10,
+      boost::bind(&CrazyflieServerNode::connectionCallback, this, _1),
+      boost::bind(&CrazyflieServerNode::disconnectionCallback, this, _1),
+      ros::VoidPtr(), nh_.getCallbackQueue());
+    pub_z_range_ = nh_.advertise(optsZRange);
+
+    ros::AdvertiseOptions optsBatteryVoltage = ros::AdvertiseOptions::create<std_msgs::Float32>(
+      "crazyflieBatteryVoltage", 10,
+      boost::bind(&CrazyflieServerNode::connectionCallback, this, _1),
+      boost::bind(&CrazyflieServerNode::disconnectionCallback, this, _1),
+      ros::VoidPtr(), nh_.getCallbackQueue());
+    pub_battery_voltage_ = nh_.advertise(optsBatteryVoltage);
+
+    if (vel_LOG_){
+      ros::AdvertiseOptions optsVel = ros::AdvertiseOptions::create<geometry_msgs::Vector3Stamped>(
+        "crazyflieVel", 10,
+        boost::bind(&CrazyflieServerNode::connectionCallback, this, _1),
+        boost::bind(&CrazyflieServerNode::disconnectionCallback, this, _1),
+        ros::VoidPtr(), nh_.getCallbackQueue());
+      pub_vel_ = nh_.advertise(optsVel);
+    };
 
     if(thrust_LOG_){
-      pub_thrust_ = nh_.advertise<geometry_msgs::Vector3Stamped>("crazyflieThrust", 10);
+      ros::AdvertiseOptions optsThrust = ros::AdvertiseOptions::create<geometry_msgs::Vector3Stamped>(
+        "crazyflieThrust", 10,
+        boost::bind(&CrazyflieServerNode::connectionCallback, this, _1),
+        boost::bind(&CrazyflieServerNode::disconnectionCallback, this, _1),
+        ros::VoidPtr(), nh_.getCallbackQueue());
+      pub_thrust_ = nh_.advertise(optsThrust);
     };
+
     if(ang_LOG_){
-      pub_ang_ = nh_.advertise<geometry_msgs::Vector3Stamped>("crazyflieAng", 10);
+      ros::AdvertiseOptions optsAng = ros::AdvertiseOptions::create<geometry_msgs::Vector3Stamped>(
+        "crazyflieAng", 10,
+        boost::bind(&CrazyflieServerNode::connectionCallback, this, _1),
+        boost::bind(&CrazyflieServerNode::disconnectionCallback, this, _1),
+        ros::VoidPtr(), nh_.getCallbackQueue());
+      pub_ang_ = nh_.advertise(optsAng);
     };
+
     if(acc_LOG_){
-      pub_acc_ = nh_.advertise<geometry_msgs::Vector3Stamped>("crazyflieAcc", 10);
+      ros::AdvertiseOptions optsAcc = ros::AdvertiseOptions::create<geometry_msgs::Vector3Stamped>(
+        "crazyflieAcc", 10,
+        boost::bind(&CrazyflieServerNode::connectionCallback, this, _1),
+        boost::bind(&CrazyflieServerNode::disconnectionCallback, this, _1),
+        ros::VoidPtr(), nh_.getCallbackQueue());
+      pub_acc_ = nh_.advertise(optsAcc);
     };
+
     if(gyro_LOG_){
-      pub_gyro_ = nh_.advertise<geometry_msgs::Vector3Stamped>("crazyflieAngRate", 10);
+      ros::AdvertiseOptions optsGyro = ros::AdvertiseOptions::create<geometry_msgs::Vector3Stamped>(
+        "crazyflieAngRate", 10,
+        boost::bind(&CrazyflieServerNode::connectionCallback, this, _1),
+        boost::bind(&CrazyflieServerNode::disconnectionCallback, this, _1),
+        ros::VoidPtr(), nh_.getCallbackQueue());
+      pub_gyro_ = nh_.advertise(optsGyro);
     };
+    
+    supervisor_log_is_active_ = false;
+    optical_flow_log_is_active_ = false;
+    battery_log_is_active_ = false;
+    vel_log_is_active_ = false;
+    thrust_log_is_active_ = false;
+    angle_log_is_active_ = false;
+    acc_log_is_active_ = false;
+    gyro_log_is_active_ = false;
 
     sub_cmd_vel_  = nh_.subscribe("cmd_vel", 1, &CrazyflieServerNode::cmdVelCallback, this);
     update_timer_ = nh_.createTimer(ros::Duration(1.0f/100.0f), &CrazyflieServerNode::updateCallback, this);
@@ -188,9 +263,9 @@ public:
       std::function<void(uint32_t, LogSupervisor*)> supervisorCb =
           std::bind(&CrazyflieServerNode::supervisorLogCallback, this, std::placeholders::_1, std::placeholders::_2);
       supervisor_log_ = std::make_unique<LogBlock<LogSupervisor>>(cf_.get(), logVars, supervisorCb);
-      supervisor_log_->start(uint8_t(100.0f/1.0f)); // It works in increments of tens of milliseconds
+      // supervisor_log_->start(uint8_t(100.0f/1.0f)); // It works in increments of tens of milliseconds
 
-      ROS_INFO_STREAM("Supervisor log block started and setted to " << 100/uint8_t(100.0f/1.0f) << " Hz");
+      // ROS_INFO_STREAM("Supervisor log block started and setted to " << 100/uint8_t(100.0f/1.0f) << " Hz");
     }
     catch (std::exception &e) {
       ROS_ERROR("Failed to start supervisor log block: %s", e.what());
@@ -204,8 +279,8 @@ public:
       std::function<void(uint32_t, LogOpticalFlow*)> opticalFlowCb =
           std::bind(&CrazyflieServerNode::opticalFlowLogCallback, this, std::placeholders::_1, std::placeholders::_2);
       optical_flow_log_ = std::make_unique<LogBlock<LogOpticalFlow>>(cf_.get(), logVars, opticalFlowCb);
-      optical_flow_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
-      ROS_INFO_STREAM("Optical flow log block started and setted to " << 100/uint8_t(100.0f/static_cast<float>(LOG_freq_)) << " Hz");
+      // optical_flow_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
+      // ROS_INFO_STREAM("Optical flow log block started and setted to " << 100/uint8_t(100.0f/static_cast<float>(LOG_freq_)) << " Hz");
     }
     catch (std::exception &e) {
       ROS_ERROR("Failed to start optical flow log block: %s", e.what());
@@ -220,8 +295,8 @@ public:
 
       battery_log_.reset(new LogBlock<LogBattery>(
         cf_.get(), logVars, batteryCb));
-      battery_log_->start(uint8_t(100.0f/1.0f)); // It works in increments of tens of milliseconds
-      ROS_INFO_STREAM("Battery log block started and setted to " << 100/uint8_t(100.0f / 1.0f) << " Hz");
+      // battery_log_->start(uint8_t(100.0f/1.0f)); // It works in increments of tens of milliseconds
+      // ROS_INFO_STREAM("Battery log block started and setted to " << 100/uint8_t(100.0f / 1.0f) << " Hz");
     } catch (std::exception &e) {
       ROS_ERROR("Failed to start battery log block: %s", e.what());
     }
@@ -313,6 +388,189 @@ public:
   }
 
 private:
+
+  void connectionCallback(const ros::SingleSubscriberPublisher& pub) {
+    ROS_INFO("Connection callback with topic name: %s", pub.getTopic().c_str());
+
+    // Gets the name of the topic
+    std::string topic = pub.getTopic();
+    std::string lastPart = topic.substr(topic.find_last_of("/") + 1);
+    ROS_INFO("Last part of the topic: %s", lastPart.c_str());
+    ROS_INFO_STREAM("Is << " << lastPart.c_str() << " >> equal to << " << "crazyflieCanFly" << " >> ? " << (lastPart == "crazyflieCanFly"));
+    if (((lastPart == "crazyflieCanFly") || (lastPart == "crazyflieIsFlying")) && !supervisor_log_is_active_) {
+      try {
+        supervisor_log_->start(uint8_t(100.0f/1.0f)); // It works in increments of tens of milliseconds
+        supervisor_log_is_active_ = true;
+        ROS_INFO_STREAM("Supervisor log block started and setted to " << 100/uint8_t(100.0f/1.0f) << " Hz");
+      }
+      catch (std::exception &e) {
+        ROS_ERROR("Failed to start supervisor log block: %s", e.what());
+      }
+    } else if ((lastPart == "crazyflieZRange") && !optical_flow_log_is_active_) {
+      try {
+        optical_flow_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
+        optical_flow_log_is_active_ = true;
+        ROS_INFO_STREAM("Optical flow log block started and setted to " << 100/uint8_t(100.0f/static_cast<float>(LOG_freq_)) << " Hz");
+      }
+      catch (std::exception &e) {
+        ROS_ERROR("Failed to start optical flow log block: %s", e.what());
+      }
+    } else if ((lastPart == "crazyflieBatteryVoltage") && !battery_log_is_active_) {
+      try {
+        battery_log_->start(uint8_t(100.0f/1.0f)); // It works in increments of tens of milliseconds
+        battery_log_is_active_ = true;
+        ROS_INFO_STREAM("Battery log block started and setted to " << 100/uint8_t(100.0f / 1.0f) << " Hz");
+      }
+      catch (std::exception &e) {
+        ROS_ERROR("Failed to start battery log block: %s", e.what());
+      }
+    } else if ((lastPart == "crazyflieVel") && !vel_log_is_active_) {
+      try {
+        vel_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
+        vel_log_is_active_ = true;
+        ROS_INFO_STREAM("Velocity log block started and setted to " << 100/uint8_t(100.0f/static_cast<float>(LOG_freq_)) << " Hz");
+      }
+      catch (std::exception &e) {
+        ROS_ERROR("Failed to start velocity log block: %s", e.what());
+      }
+    } else if ((lastPart == "crazyflieThrust") && !thrust_log_is_active_) {
+      try {
+        thrust_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
+        thrust_log_is_active_ = true;
+        ROS_INFO_STREAM("Thrust log block started and setted to " << 100/uint8_t(100.0f/static_cast<float>(LOG_freq_)) << " Hz");
+      }
+      catch (std::exception &e) {
+        ROS_ERROR("Failed to start thrust log block: %s", e.what());
+      }
+    } else if ((lastPart == "crazyflieAng") && !angle_log_is_active_) {
+      try {
+        angle_log_->start(1.0f /LOG_freq_); // It works in increments of tens of milliseconds
+        angle_log_is_active_ = true;
+        ROS_INFO_STREAM("Angle log block started and setted to " << 100/uint8_t(100.0f/static_cast<float>(LOG_freq_)) << " Hz");
+      }
+      catch (std::exception &e) {
+        ROS_ERROR("Failed to start angle log block: %s", e.what());
+      }
+    } else if ((lastPart == "crazyflieAcc") && !acc_log_is_active_) {
+      try {
+        acc_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
+        acc_log_is_active_ = true;
+        ROS_INFO_STREAM("Acc log block started and setted to " << 100/uint8_t(100.0f/static_cast<float>(LOG_freq_)) << " Hz");
+      }
+      catch (std::exception &e) {
+        ROS_ERROR("Failed to start acc log block: %s", e.what());
+      }
+    } else if ((lastPart == "crazyflieAngRate") && !gyro_log_is_active_) {
+      try {
+        gyro_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
+        gyro_log_is_active_ = true;
+        ROS_INFO_STREAM("Gyro log block started and setted to " << 100/uint8_t(100.0f/static_cast<float>(LOG_freq_)) << " Hz");
+      }
+      catch (std::exception &e) {
+        ROS_ERROR("Failed to start gyro log block: %s", e.what());
+      }
+    }
+
+  }
+
+  void disconnectionCallback(const ros::SingleSubscriberPublisher& pub) {
+    std::string topic = pub.getTopic();
+    std::string lastPart = topic.substr(topic.find_last_of("/") + 1);
+    ROS_INFO("Last part of the topic: %s", lastPart.c_str());
+
+    if (pub_can_fly_.getNumSubscribers() == 0 && pub_is_flying_.getNumSubscribers() == 0 && supervisor_log_is_active_) {
+      try {
+        supervisor_log_->stop();
+        supervisor_log_is_active_ = false;
+        ROS_INFO("Supervisor log block stopped");
+      }
+      catch (std::exception &e) {
+        ROS_ERROR("Failed to stop supervisor log block: %s", e.what());
+      }
+    } else if (pub_z_range_.getNumSubscribers() == 0 && optical_flow_log_is_active_) {
+      try {
+        optical_flow_log_->stop();
+        optical_flow_log_is_active_ = false;
+        ROS_INFO("Optical flow log block stopped");
+      }
+      catch (std::exception &e) {
+        ROS_ERROR("Failed to stop optical flow log block: %s", e.what());
+      }
+    }else if (pub_battery_voltage_.getNumSubscribers() == 0 && battery_log_is_active_) {
+      try {
+        battery_log_->stop();
+        battery_log_is_active_ = false;
+        ROS_INFO("Battery log block stopped");
+      }
+      catch (std::exception &e) {
+        ROS_ERROR("Failed to stop battery log block: %s", e.what());
+      }
+    }else if (vel_LOG_ && pub_vel_.getNumSubscribers() == 0 && vel_log_is_active_) {
+        try {
+          vel_log_->stop();
+          vel_log_is_active_ = false;
+          ROS_INFO("Velocity log block stopped");
+        }
+        catch (std::exception &e) {
+          ROS_ERROR("Failed to stop velocity log block: %s", e.what());
+        }
+    }else if (thrust_LOG_ && pub_thrust_.getNumSubscribers() == 0 && thrust_log_is_active_) {
+        try {
+          thrust_log_->stop();
+          thrust_log_is_active_ = false;
+          ROS_INFO("Thrust log block stopped");
+        }
+        catch (std::exception &e) {
+          ROS_ERROR("Failed to stop thrust log block: %s", e.what());
+        }
+    }else if (ang_LOG_ && pub_ang_.getNumSubscribers() == 0 && angle_log_is_active_) {
+        try {
+          angle_log_->stop();
+          angle_log_is_active_ = false;
+          ROS_INFO("Angle log block stopped");
+        }
+        catch (std::exception &e) {
+          ROS_ERROR("Failed to stop angle log block: %s", e.what());
+        }
+    }else if (acc_LOG_ && pub_acc_.getNumSubscribers() == 0 && acc_log_is_active_) {
+        try {
+          acc_log_->stop();
+          acc_log_is_active_ = false;
+          ROS_INFO("Acc log block stopped");
+        }
+        catch (std::exception &e) {
+          ROS_ERROR("Failed to stop acc log block: %s", e.what());
+        }
+      }else if (gyro_LOG_ && pub_gyro_.getNumSubscribers() == 0 && gyro_log_is_active_) {
+        try {
+          gyro_log_->stop();
+          gyro_log_is_active_ = false;
+          ROS_INFO("Gyro log block stopped");
+        }
+        catch (std::exception &e) {
+          ROS_ERROR("Failed to stop gyro log block: %s", e.what());
+        }
+      }
+
+    ROS_INFO("Disconnection callback");
+  }
+
+  template <typename LogType>
+  void stopLogBlock(std::unique_ptr<LogBlock<LogType>>& logBlock)
+  {
+    if (logBlock) {
+      logBlock->stop();
+    }
+  }
+
+  template <typename LogType>
+  void startLogBlock(std::unique_ptr<LogBlock<LogType>>& logBlock)
+  {
+    if (logBlock) {
+      logBlock->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // Change the frequency for each topic accordingly
+    }
+  }
+
   void updateCallback(const ros::TimerEvent&) {
     cf_->sendPing();
   }
@@ -349,6 +607,7 @@ private:
     std_msgs::Bool msg;
     msg.data = canFly;
     pub_can_fly_.publish(msg);
+    ROS_INFO("Can fly: %d", canFly);
     msg.data = isFlying;
     pub_is_flying_.publish(msg);
   }
@@ -357,6 +616,7 @@ private:
     geometry_msgs::Vector3Stamped msg;
     msg.header.stamp = ros::Time::now();
     msg.vector.z = data->zrange / 1000.0;
+    // ROS_INFO("Z range: %f", msg.vector.z);
     pub_z_range_.publish(msg);
   }
 
@@ -431,6 +691,15 @@ private:
   std::unique_ptr<LogBlock<LogAcc>> acc_log_;
   std::unique_ptr<LogBlock<LogGyro>> gyro_log_;
 
+  bool supervisor_log_is_active_;
+  bool optical_flow_log_is_active_;
+  bool battery_log_is_active_;
+  bool vel_log_is_active_;
+  bool thrust_log_is_active_;
+  bool angle_log_is_active_;
+  bool acc_log_is_active_;
+  bool gyro_log_is_active_;
+
   bool use_body_rate_, plot_LOG_TOC_;
   bool vel_LOG_, ang_LOG_, thrust_LOG_, acc_LOG_, gyro_LOG_;
   int stabilizer_controller_;
@@ -445,4 +714,4 @@ int main(int argc, char** argv) {
   spinner.start();
   ros::waitForShutdown();
   return 0;
-}
+} 
