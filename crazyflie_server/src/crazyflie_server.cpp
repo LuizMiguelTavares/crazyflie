@@ -82,7 +82,7 @@ public:
       throw std::runtime_error("Parameter ID not set.");
     }
 
-    cf_id_ = 1;  // Default ID
+    ROS_INFO("Crazyflie ID: %d", cf_id_);
 
     if      (cf_id_ == 1) uri_ = "radio://0/10/2M/E7E7E7E701";
     else if (cf_id_ == 2) uri_ = "radio://0/10/2M/E7E7E7E702";
@@ -240,10 +240,12 @@ public:
     update_timer_ = nh_.createTimer(ros::Duration(1.0f/100.0f), &CrazyflieServerNode::updateCallback, this);
 
     cf_->logReset(); // Important
+    ROS_INFO("Log reset.");
+    ros::Duration(3.0).sleep();
     try {
-      cf_->requestLogToc(/*forceNoCache*/);
+      cf_->requestLogToc(/*forceNoCache*/false);
       ROS_INFO("Log TOC requested.");
-      ros::Duration(1.0).sleep();
+      ros::Duration(3.0).sleep();
     } catch (std::exception &e) {
       ROS_WARN("Failed to request Log TOC: %s", e.what());
     }
