@@ -91,3 +91,6 @@ The **`server.launch`** file generates the following topics:
 
 4. **`/<namespace>/crazyflieAng`** (`geometry_msgs/Twist`):  
    Publishes angular data as a `Twist` message.
+
+
+To correctly install the crazyflie_cpp you need to do "echo 'export CPLUS_INCLUDE_PATH=$CPLUS_INCLUDE_PATH:/usr/local/include/crazyflie_cpp' >> ~/.bashrc" after the make install.
