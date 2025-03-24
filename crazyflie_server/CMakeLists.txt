@@ -23,9 +23,9 @@ include_directories(
   ${LIBUSB_INCLUDE_DIRS}  # Make sure libusb headers are included
 )
 
-add_executable(crazyflie_test src/crazyflie_server.cpp)
-target_link_libraries(crazyflie_test
+add_executable(crazyflie_server src/crazyflie_server.cpp)
+target_link_libraries(crazyflie_server
   ${catkin_LIBRARIES}
   crazyflie_cpp
-  ${LIBUSB_LIBRARIES}     # Link against libusb
+  ${LIBUSB_LIBRARIES}
 )

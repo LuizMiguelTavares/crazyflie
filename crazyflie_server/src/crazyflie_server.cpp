@@ -77,10 +77,10 @@ public:
       LOG_freq_ = 1.0;
     }
     
-    // if (!nh_.getParam("ID", cf_id_)) {
-    //   ROS_ERROR("Required parameter '~ID' not set!");
-    //   throw std::runtime_error("Parameter ID not set.");
-    // }
+    if (!nh_.getParam("ID", cf_id_)) {
+      ROS_ERROR("Required parameter '~ID' not set!");
+      throw std::runtime_error("Parameter ID not set.");
+    }
 
     cf_id_ = 1;  // Default ID
 
