@@ -137,7 +137,7 @@ class CrazyflieServerNode:
             try:
                 self._cf.param.set_value("flightmode.stabModeRoll", 1)
                 self._cf.param.set_value("flightmode.stabModePitch", 1)
-                self._cf.param.set_value("flightmode.stabModeYaw", 0)
+                self._cf.param.set_value("flightmode.stabModeYaw", 0) # Yaw should continue to be body rate
             except Exception as e:
                 rospy.logerr(f"Error setting flightmode.stabMode*: {e}")
 
