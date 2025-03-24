@@ -137,7 +137,7 @@ class CrazyflieServerNode:
             try:
                 self._cf.param.set_value("flightmode.stabModeRoll", 1)
                 self._cf.param.set_value("flightmode.stabModePitch", 1)
-                self._cf.param.set_value("flightmode.stabModeYaw", 1)
+                self._cf.param.set_value("flightmode.stabModeYaw", 0)
             except Exception as e:
                 rospy.logerr(f"Error setting flightmode.stabMode*: {e}")
 
@@ -377,7 +377,7 @@ class CrazyflieServerNode:
         ang_msg = Vector3Stamped()
         ang_msg.header.stamp = rospy.Time.now()
         ang_msg.vector.x = roll_rad
-        ang_msg.vector.y = -pitch_rad  # sometimes pitch is reversed
+        ang_msg.vector.y = -pitch_rad 
         ang_msg.vector.z = yaw_rad
         self.pub_ang.publish(ang_msg)
 
@@ -411,7 +411,7 @@ class CrazyflieServerNode:
         gy_raw = data.get('gyro.yRaw', 0)
         gz_raw = data.get('gyro.zRaw', 0)
 
-        # Convert from int16 to rad/s (approx scale)
+        # Convert from int16 to rad/s
         gx_rad_s = gx_raw * 0.001065
         gy_rad_s = gy_raw * 0.001065
         gz_rad_s = gz_raw * 0.001065
@@ -449,7 +449,6 @@ class CrazyflieServerNode:
     def publish_twist(self, msg):
         """Receive a Twist and send setpoints to the Crazyflie."""
         if self.use_body_rate:
-            # rollRate, pitchRate, yawRate (deg/s) + thrust
             rollrate  = msg.angular.x  * 57.2958
             pitchrate = msg.angular.y  * 57.2958
             yawrate   = msg.angular.z  * 57.2958
@@ -459,14 +458,13 @@ class CrazyflieServerNode:
                 rollrate, pitchrate, -yawrate, thrust
             )
         else:
-            # roll, pitch, yawRate (deg) + thrust
-            roll   = msg.angular.x * 57.2958
-            pitch  = msg.angular.y * 57.2958
-            yawrate= msg.angular.z * 57.2958
-            thrust = int(msg.linear.z)
+            roll    = msg.angular.x * 57.2958
+            pitch   = msg.angular.y * 57.2958
+            yawrate = msg.angular.z * 57.2958
+            thrust  = int(msg.linear.z)
 
             self._cf.commander.send_setpoint(
-                -roll, pitch, -yawrate, thrust
+                roll, pitch, -yawrate, thrust
             )
 
     def _connection_failed(self, link_uri, msg):
