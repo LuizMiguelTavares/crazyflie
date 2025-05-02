@@ -29,7 +29,6 @@ add_executable(crazyflie_server src/crazyflie_server.cpp)
 target_link_libraries(crazyflie_server
   ${catkin_LIBRARIES}
   crazyflie_cpp
-#   -Wl,--no-as-needed crazyflieLinkCpp -Wl,--as-needed
 )
 
 get_target_property(cflib_exists crazyflieLinkCpp TYPE)
