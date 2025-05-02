@@ -240,12 +240,14 @@ public:
     update_timer_ = nh_.createTimer(ros::Duration(1.0f/100.0f), &CrazyflieServerNode::updateCallback, this);
 
     cf_->logReset(); // Important
-    ROS_INFO("Log reset.");
-    ros::Duration(3.0).sleep();
+    // ROS_INFO("Log reset.");
+    // ros::Duration(3.0).sleep();
     try {
       cf_->requestLogToc(/*forceNoCache*/false);
-      ROS_INFO("Log TOC requested.");
-      ros::Duration(3.0).sleep();
+
+      cf_->requestLogToc(/*forceNoCache*/false);
+      // ROS_INFO("Log TOC requested.");
+      // ros::Duration(3.0).sleep();
     } catch (std::exception &e) {
       ROS_WARN("Failed to request Log TOC: %s", e.what());
     }
@@ -262,7 +264,7 @@ public:
 
     try {
       std::list<std::pair<std::string, std::string>> logVars = { {"supervisor", "info"} };
-      std::function<void(uint32_t, LogSupervisor*)> supervisorCb =
+      std::function<void(uint32_t, const LogSupervisor*)> supervisorCb =
           std::bind(&CrazyflieServerNode::supervisorLogCallback, this, std::placeholders::_1, std::placeholders::_2);
       supervisor_log_ = std::make_unique<LogBlock<LogSupervisor>>(cf_.get(), logVars, supervisorCb);
       // supervisor_log_->start(uint8_t(100.0f/1.0f)); // It works in increments of tens of milliseconds
@@ -278,7 +280,7 @@ public:
           {"motion", "deltaY"},
           {"range", "zrange"}
       };
-      std::function<void(uint32_t, LogOpticalFlow*)> opticalFlowCb =
+      std::function<void(uint32_t, const LogOpticalFlow*)> opticalFlowCb =
           std::bind(&CrazyflieServerNode::opticalFlowLogCallback, this, std::placeholders::_1, std::placeholders::_2);
       optical_flow_log_ = std::make_unique<LogBlock<LogOpticalFlow>>(cf_.get(), logVars, opticalFlowCb);
       // optical_flow_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
@@ -292,7 +294,7 @@ public:
         {"pm", "vbat"}
       };
 
-      std::function<void(uint32_t, LogBattery*)> batteryCb =
+      std::function<void(uint32_t, const LogBattery*)> batteryCb =
         std::bind(&CrazyflieServerNode::batteryLogCallback, this, std::placeholders::_1, std::placeholders::_2);
 
       battery_log_.reset(new LogBlock<LogBattery>(
@@ -310,7 +312,7 @@ public:
             {"stateEstimate", "vz"},
             {"stateEstimate", "z"}
         };
-        std::function<void(uint32_t, LogVelocity*)> velocityCb =
+        std::function<void(uint32_t, const LogVelocity*)> velocityCb =
             std::bind(&CrazyflieServerNode::velocityLogCallback, this, std::placeholders::_1, std::placeholders::_2);
         vel_log_ = std::make_unique<LogBlock<LogVelocity>>(cf_.get(), logVars, velocityCb);
         vel_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
@@ -323,7 +325,7 @@ public:
     if (thrust_LOG_) {
       try{
         std::list<std::pair<std::string, std::string>> logVars = { {"stabilizer", "thrust"} };
-        std::function<void(uint32_t, LogThrust*)> thrustCb =
+        std::function<void(uint32_t, const LogThrust*)> thrustCb =
             std::bind(&CrazyflieServerNode::thrustLogCallback, this, std::placeholders::_1, std::placeholders::_2);
         thrust_log_ = std::make_unique<LogBlock<LogThrust>>(cf_.get(), logVars, thrustCb);
         thrust_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
@@ -340,7 +342,7 @@ public:
             {"stateEstimate", "pitch"},
             {"stateEstimate", "yaw"}
         };
-        std::function<void(uint32_t, LogAngles*)> angleCb =
+        std::function<void(uint32_t, const LogAngles*)> angleCb =
             std::bind(&CrazyflieServerNode::angleLogCallback, this, std::placeholders::_1, std::placeholders::_2);
         angle_log_ = std::make_unique<LogBlock<LogAngles>>(cf_.get(), logVars, angleCb);
         angle_log_->start(1.0f /LOG_freq_); // It works in increments of tens of milliseconds
@@ -357,7 +359,7 @@ public:
             {"acc", "y"},
             {"acc", "z"}
         };
-        std::function<void(uint32_t, LogAcc*)> accCb =
+        std::function<void(uint32_t, const LogAcc*)> accCb =
             std::bind(&CrazyflieServerNode::accLogCallback, this, std::placeholders::_1, std::placeholders::_2);
         acc_log_ = std::make_unique<LogBlock<LogAcc>>(cf_.get(), logVars, accCb);
         acc_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
@@ -374,7 +376,7 @@ public:
             {"gyro", "y"},
             {"gyro", "z"}
         };
-        std::function<void(uint32_t, LogGyro*)> gyroCb =
+        std::function<void(uint32_t, const LogGyro*)> gyroCb =
             std::bind(&CrazyflieServerNode::gyroLogCallback, this, std::placeholders::_1, std::placeholders::_2);
         gyro_log_ = std::make_unique<LogBlock<LogGyro>>(cf_.get(), logVars, gyroCb);
         gyro_log_->start(uint8_t(100.0f/static_cast<float>(LOG_freq_))); // It works in increments of tens of milliseconds
@@ -574,7 +576,8 @@ private:
   }
 
   void updateCallback(const ros::TimerEvent&) {
-    cf_->sendPing();
+    // cf_->sendPing();
+    cf_->processAllPackets();
   }
 
   void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg) {
@@ -593,7 +596,7 @@ private:
     }
   }
 
-  void supervisorLogCallback(uint32_t /*timestamp*/, LogSupervisor* data) {
+  void supervisorLogCallback(uint32_t /*timestamp*/, const LogSupervisor* data) {
     int info = static_cast<int>(data->info);
     bool canFly = ((info >> 3) & 1);
     bool isFlying = ((info >> 4) & 1);
@@ -614,7 +617,7 @@ private:
     pub_is_flying_.publish(msg);
   }
 
-  void opticalFlowLogCallback(uint32_t /*timestamp*/, LogOpticalFlow* data) {
+  void opticalFlowLogCallback(uint32_t /*timestamp*/, const LogOpticalFlow* data) {
     geometry_msgs::Vector3Stamped msg;
     msg.header.stamp = ros::Time::now();
     msg.vector.z = data->zrange / 1000.0;
@@ -622,13 +625,14 @@ private:
     pub_z_range_.publish(msg);
   }
 
-  void batteryLogCallback(uint32_t /*timestamp*/, LogBattery* data) {
+  void batteryLogCallback(uint32_t /*timestamp*/, const LogBattery* data) {
     std_msgs::Float32 msg;
     msg.data = data->vbat;
     pub_battery_voltage_.publish(msg);
   }
+  
 
-  void velocityLogCallback(uint32_t /*timestamp*/, LogVelocity* data) {
+  void velocityLogCallback(uint32_t /*timestamp*/, const LogVelocity* data) {
     geometry_msgs::Vector3Stamped msg;
     msg.header.stamp = ros::Time::now();
     msg.vector.x = data->vx;
@@ -637,14 +641,14 @@ private:
     pub_vel_.publish(msg);
   }
 
-  void thrustLogCallback(uint32_t /*timestamp*/, LogThrust* data) {
+  void thrustLogCallback(uint32_t /*timestamp*/, const LogThrust* data) {
     geometry_msgs::Vector3Stamped msg;
     msg.header.stamp = ros::Time::now();
     msg.vector.z = data->thrust;
     pub_thrust_.publish(msg);
   }
 
-  void angleLogCallback(uint32_t /*timestamp*/, LogAngles* data) {
+  void angleLogCallback(uint32_t /*timestamp*/, const LogAngles* data) {
     geometry_msgs::Vector3Stamped msg;
     msg.header.stamp = ros::Time::now();
     msg.vector.x = data->roll  * 0.0174533;
@@ -653,7 +657,7 @@ private:
     pub_ang_.publish(msg);
   }
 
-  void accLogCallback(uint32_t /*timestamp*/, LogAcc* data) {
+  void accLogCallback(uint32_t /*timestamp*/, const LogAcc* data) {
     geometry_msgs::Vector3Stamped msg;
     msg.header.stamp = ros::Time::now();
     msg.vector.x = -data->x * 9.81;
@@ -662,7 +666,7 @@ private:
     pub_acc_.publish(msg);
   }
 
-  void gyroLogCallback(uint32_t /*timestamp*/, LogGyro* data) {
+  void gyroLogCallback(uint32_t /*timestamp*/, const LogGyro* data) {
     geometry_msgs::Vector3Stamped msg;
     msg.header.stamp = ros::Time::now();
     msg.vector.x = data->x * 0.0174533;

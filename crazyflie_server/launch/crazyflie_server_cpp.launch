@@ -10,7 +10,7 @@
         <node pkg="crazyflie_server" type="crazyflie_server" name="crazyflie_server_node" output="screen">
             <rosparam file="$(find crazyflie_server)/config/crazyflie_config.yaml" command="load" />
             <param if="$(eval arg('ID') != '')" name="ID" value="$(arg ID)" />
-            <param name="plot_LOG_TOC" value="true" />
+            <param name="plot_LOG_TOC" value="false" />
         </node>
     </group>
 </launch>

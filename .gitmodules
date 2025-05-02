@@ -1,0 +1,11 @@
+[submodule "crazyflie_server/deps/crazyflie_tools/crazyflie_cpp"]
+	path = crazyflie_server/deps/crazyflie_tools/crazyflie_cpp
+	url = git@github.com:LuizMiguelTavares/crazyflie_cpp.git
+	branch = main
+[submodule "crazyflie_server/deps/crazyflie_tools"]
+	path = crazyflie_server/deps/crazyflie_tools
+	url = git@github.com:LuizMiguelTavares/crazyflie_tools.git
+	branch = main
+[submodule "crazyflie_server/deps/crazyflie_cpp"]
+	path = crazyflie_server/deps/crazyflie_cpp
+	url = https://github.com/LuizMiguelTavares/crazyflie_cpp.git
