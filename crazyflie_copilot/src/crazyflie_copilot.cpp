@@ -2,6 +2,7 @@
  *  hover_controller_takeoff.cpp  –  Pattern-A (Timer + MT-Spinner)
  *********************************************************************/
 
+ #include <condition_variable>
  #include <ros/ros.h>
  #include <geometry_msgs/Twist.h>
  #include <geometry_msgs/Vector3Stamped.h>
@@ -81,7 +82,7 @@
    /* --- Take-off service (blocking) ---------------------- */
    bool takeoffSrv(std_srvs::Trigger::Request&, std_srvs::Trigger::Response& res)
    {
-     std::lock_guard<std::mutex> lock(state_mtx_);
+     std::unique_lock<std::mutex> lock(state_mtx_);
      if (mode_ != Mode::LANDED && mode_ != Mode::STOPPED_FLYING) {
        res.success = false;  res.message = "Not in LANDED state";  return true;
      }
@@ -107,7 +108,7 @@
    /* --- Land service (blocking) -------------------------- */
    bool landSrv(std_srvs::Trigger::Request&, std_srvs::Trigger::Response& res)
    {
-     std::lock_guard<std::mutex> lock(state_mtx_);
+     std::unique_lock<std::mutex> lock(state_mtx_);
      if (mode_ != Mode::HOVER) {
        res.success = false;  res.message = "Not in HOVER state";  return true;
      }
@@ -225,6 +226,7 @@
    ros::Publisher  cmd_pub_;
    ros::ServiceServer take_srv_, land_srv_;
    ros::Timer timer_;
+   ros::Time start_time_;
    std::condition_variable state_cond_;
    std::mutex state_mtx_;
  
