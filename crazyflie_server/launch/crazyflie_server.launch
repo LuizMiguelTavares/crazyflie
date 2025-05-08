@@ -6,6 +6,10 @@
         <node pkg="crazyflie_server" type="crazyflie_server.py" name="crazyflie_server_node" output="screen">
             <rosparam file="$(find crazyflie_server)/config/crazyflie_config.yaml" command="load" />
             <param if="$(eval arg('ID') != '')" name="ID" value="$(arg ID)" />
+            <param name="is_running_with_copilot" value="true" />
+        </node>
+
+        <node pkg="crazyflie_copilot" type="crazyflie_copilot" name="crazyflie_copilot_node" output="screen">
         </node>
     </group>
 </launch>

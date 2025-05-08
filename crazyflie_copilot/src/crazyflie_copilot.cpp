@@ -18,24 +18,24 @@
  class HoverController
  {
  public:
-   explicit HoverController(ros::NodeHandle& nh)
+   explicit HoverController(ros::NodeHandle& nh, ros::NodeHandle& pnh)
    {
      /* ─── Parameters ─────────────────────────────────────── */
-     nh.param("idle_time",            idle_time_,        2.0);
-     nh.param("idle_pwm",             idle_pwm_,     12000.0);
-     nh.param("takeoff_duration",     takeoff_dur_,      2.0);
-     nh.param("takeoff_altitude",     hover_alt_,        1.0);
-     nh.param("landing_velocity",     land_vel_,        0.3);
-     nh.param("controller_frequency", controller_freq_, 80.0);
+     pnh.param("idle_time",            idle_time_,        2.0);
+     pnh.param("idle_pwm",             idle_pwm_,     12000.0);
+     pnh.param("takeoff_duration",     takeoff_dur_,      2.0);
+     pnh.param("takeoff_altitude",     hover_alt_,        1.0);
+     pnh.param("landing_velocity",     land_vel_,        0.3);
+     pnh.param("controller_frequency", controller_freq_, 80.0);
  
-     nh.param("kp_z",  Kp_z_,  6.0);
-     nh.param("kd_z",  Kd_z_,  4.0);
-     nh.param("kp_xy", Kp_xy_, 0.8);
-     nh.param("kd_xy", Kd_xy_, 0.3);
-     nh.param("tilt_max_deg", tilt_max_deg_, 10.0);
+     pnh.param("kp_z",  Kp_z_,  5.0);
+     pnh.param("kd_z",  Kd_z_,  5.0);
+     pnh.param("kp_xy", Kp_xy_, 2.0);
+     pnh.param("kd_xy", Kd_xy_, 2.0);
+     pnh.param("tilt_max_deg", tilt_max_deg_, 10.0);
  
-     nh.param("a_max",    a_max_,    16.5);
-     nh.param("kp_a_max", kp_a_max_,  6.0);
+     pnh.param("a_max",    a_max_,    16.5);
+     pnh.param("kp_a_max", kp_a_max_,  6.0);
  
      pwm_max_   = 60000.0;
      pwm_min_   = 11000.0;
@@ -54,7 +54,7 @@
      is_flying_sub_ = nh.subscribe("crazyflieIsFlying", 10,
                                    &HoverController::isFlyingCb, this);
  
-     cmd_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel", 10);
+     cmd_pub_  = nh.advertise<geometry_msgs::Twist>("copilot_cmd_vel", 10);
  
      take_srv_ = nh.advertiseService("takeoff",
                   &HoverController::takeoffSrv, this);
@@ -72,16 +72,25 @@
    /* ========== Callbacks =========================================== */
  
    /* --- sensor topics (atomic writes, no lock needed) -------------- */
-   void zCb (const geometry_msgs::Vector3Stamped::ConstPtr& m) { z_  = m->vector.z; }
+   void zCb(const geometry_msgs::Vector3Stamped::ConstPtr& m) { z_  = m->vector.z;
+      // ROS_INFO_STREAM("z: " << z_);
+    }
    void velCb(const geometry_msgs::Vector3Stamped::ConstPtr& m)
-   { vx_ = m->vector.x;  vy_ = m->vector.y; dz_ = m->vector.z; }
+   { vx_ = m->vector.x;  vy_ = m->vector.y; dz_ = m->vector.z; 
+      // ROS_INFO_STREAM("vx: " << vx_ << " vy: " << vy_ << " dz: " << dz_);
+   }
    void attCb(const geometry_msgs::Vector3Stamped::ConstPtr& m)
-   { phi_ = m->vector.x; theta_ = m->vector.y; }
-   void isFlyingCb(const std_msgs::Bool::ConstPtr& m) { is_flying_ = m->data; }
+   { phi_ = m->vector.x; theta_ = m->vector.y; 
+    //  ROS_INFO_STREAM("phi: " << phi_ << " theta: " << theta_);
+   }
+   void isFlyingCb(const std_msgs::Bool::ConstPtr& m) { is_flying_ = m->data; 
+      // ROS_INFO_STREAM("is_flying: " << is_flying_);
+   }
  
    /* --- Take-off service (blocking) ---------------------- */
    bool takeoffSrv(std_srvs::Trigger::Request&, std_srvs::Trigger::Response& res)
    {
+     ROS_INFO("Take-off requested");
      std::unique_lock<std::mutex> lock(state_mtx_);
      if (mode_ != Mode::LANDED && mode_ != Mode::STOPPED_FLYING) {
        res.success = false;  res.message = "Not in LANDED state";  return true;
@@ -108,6 +117,7 @@
    /* --- Land service (blocking) -------------------------- */
    bool landSrv(std_srvs::Trigger::Request&, std_srvs::Trigger::Response& res)
    {
+     ROS_INFO("Landing requested");
      std::unique_lock<std::mutex> lock(state_mtx_);
      if (mode_ != Mode::HOVER) {
        res.success = false;  res.message = "Not in HOVER state";  return true;
@@ -208,12 +218,16 @@
      }
      vx_prev_ = vx;  vy_prev_ = vy;
  
-     double ax_des = -(Kp_xy_ * vx + Kd_xy_ * d_vx);
-     double ay_des = -(Kp_xy_ * vy + Kd_xy_ * d_vy);
+    //  double ax_des = -(Kp_xy_ * vx + Kd_xy_ * d_vx);
+    //  double ay_des = -(Kp_xy_ * vy + Kd_xy_ * d_vy);
+     double ax_des = -Kp_xy_ * vx;
+     double ay_des = -Kp_xy_ * vy;
  
      const double tilt_max = tilt_max_deg_ * M_PI / 180.0;
      cmd.angular.x = std::clamp( ay_des / g_, -tilt_max, tilt_max);
      cmd.angular.y = std::clamp(-ax_des / g_, -tilt_max, tilt_max);
+
+    ROS_INFO("cmd.angular.x: %f, cmd.angular.y: %f, cmd.linear.z: %f", cmd.angular.x, cmd.angular.y, cmd.linear.z);
  
      publish(cmd);
    }
@@ -226,7 +240,6 @@
    ros::Publisher  cmd_pub_;
    ros::ServiceServer take_srv_, land_srv_;
    ros::Timer timer_;
-   ros::Time start_time_;
    std::condition_variable state_cond_;
    std::mutex state_mtx_;
  
@@ -247,7 +260,7 @@
  
    /* shared (protected by mutex) */
    Mode mode_ = Mode::LANDED;
-   ros::Time idle_start_, takeoff_start_, land_start_;
+   ros::Time start_time_, idle_start_, takeoff_start_, land_start_;
    ros::Time prev_loop_time_{ros::Time::now()};
    double z_init_{0}, z_land_init_{0};
    double vx_prev_{0}, vy_prev_{0};
@@ -257,9 +270,11 @@
  int main(int argc,char** argv)
  {
    ros::init(argc, argv, "hover_controller_takeoff");
-   ros::NodeHandle nh("~");
+   ros::NodeHandle pnh("~");
+   ros::NodeHandle nh;
+
  
-   HoverController ctl(nh);
+   HoverController ctl(nh, pnh);
  
    /* 2 threads: one for the timer + topics, one for service callbacks */
    ros::MultiThreadedSpinner spinner(2);

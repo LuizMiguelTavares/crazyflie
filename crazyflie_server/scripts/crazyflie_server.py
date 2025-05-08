@@ -45,6 +45,7 @@ class CrazyflieServerNode:
         self.acc_LOG      = rospy.get_param('~acc_LOG', True)
         self.gyro_raw_LOG = rospy.get_param('~gyro_raw_LOG', True)
         self.gyro_LOG     = rospy.get_param('~gyro_LOG', True)
+        self.is_running_with_copilot = rospy.get_param('~is_running_with_copilot', False)
 
         # Stabilizer controller/estimator from ROS params
         self.stabilizer_controller = rospy.get_param('~stabilizer_controller', 1)
@@ -83,7 +84,10 @@ class CrazyflieServerNode:
 
         ################### CRAZYFLIE TOPICS #######################
         # Subscriber for setpoints
-        self.pose_subscriber = rospy.Subscriber("cmd_vel", Twist, self.publish_twist)
+        if self.is_running_with_copilot:
+            self.cmd_vel_subscriber = rospy.Subscriber("copilot_cmd_vel", Twist, self.publish_twist)
+        else:
+            self.cmd_vel_subscriber = rospy.Subscriber("cmd_vel", Twist, self.publish_twist)
 
         # Publishers for data
         if self.vel_LOG:
