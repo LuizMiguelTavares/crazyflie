@@ -10,6 +10,7 @@
         </node>
 
         <node pkg="crazyflie_copilot" type="crazyflie_copilot" name="crazyflie_copilot_node" output="screen">
+            <param name="kp_xy" value="1.0" />
         </node>
     </group>
 </launch>

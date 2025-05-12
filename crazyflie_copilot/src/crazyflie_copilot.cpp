@@ -36,7 +36,23 @@
  
      pnh.param("a_max",    a_max_,    16.5);
      pnh.param("kp_a_max", kp_a_max_,  6.0);
- 
+
+     // Plot of the parameters
+    
+    //  ROS_INFO("Idle time: %f", idle_time_);
+    //  ROS_INFO("Idle PWM: %f", idle_pwm_);
+    //  ROS_INFO("Takeoff duration: %f", takeoff_dur_);
+     ROS_INFO("Takeoff altitude: %f", hover_alt_);
+     ROS_INFO("Landing velocity: %f", land_vel_);
+     ROS_INFO("Controller frequency: %f", controller_freq_);
+     ROS_INFO("Kp_z: %f", Kp_z_);
+     ROS_INFO("Kd_z: %f", Kd_z_);
+     ROS_INFO("Kp_xy: %f", Kp_xy_);
+    //  ROS_INFO("Kd_xy: %f", Kd_xy_);
+     ROS_INFO("Tilt max deg: %f", tilt_max_deg_);
+    //  ROS_INFO("a_max: %f", a_max_);
+    //  ROS_INFO("kp_a_max: %f", kp_a_max_);
+
      pwm_max_   = 60000.0;
      pwm_min_   = 11000.0;
      a_max_max_ = 21.0;
@@ -105,7 +121,7 @@
      const ros::Time t0 = ros::Time::now();
      while (ros::ok() && (ros::Time::now() - t0).toSec() < timeout) {
        if (mode_ == Mode::HOVER &&
-           std::fabs(z_ - hover_alt_) < 0.05 &&
+           std::fabs(z_ - hover_alt_) < 0.15 &&
            std::fabs(dz_) < 0.1) {
          res.success = true;  res.message = "Take-off complete";  return true;
        }
@@ -133,7 +149,7 @@
      const ros::Time t0 = ros::Time::now();
      while (ros::ok() && (ros::Time::now() - t0).toSec() < timeout) {
        if (mode_ == Mode::LANDED &&
-           z_ < 0.05 && std::fabs(dz_) < 0.1) {
+           z_ < 0.13 && std::fabs(dz_) < 0.1) {
          res.success = true;  res.message = "Landed";  return true;
        }
        state_cond_.wait_for(lock, std::chrono::milliseconds(20));
@@ -185,7 +201,7 @@
        double t_l = (now - land_start_).toSec();
        double alpha = std::min(t_l / land_dur_, 1.0);
        z_ref = std::max(z_land_init_ * (1.0 - alpha), 0.0);
-       if (alpha >= 1.0 && z < 0.05 && std::fabs(dz) < 0.1) {
+       if (alpha >= 1.0 && z < 0.13 && std::fabs(dz) < 0.1) {
          mode_ = Mode::STOPPED_FLYING;  state_cond_.notify_all();
        }
      }
@@ -218,16 +234,16 @@
      }
      vx_prev_ = vx;  vy_prev_ = vy;
  
-    //  double ax_des = -(Kp_xy_ * vx + Kd_xy_ * d_vx);
-    //  double ay_des = -(Kp_xy_ * vy + Kd_xy_ * d_vy);
-     double ax_des = -Kp_xy_ * vx;
-     double ay_des = -Kp_xy_ * vy;
+     double ax_des = -(Kp_xy_ * vx + Kd_xy_ * d_vx);
+     double ay_des = -(Kp_xy_ * vy + Kd_xy_ * d_vy);
+    //  double ax_des = -Kp_xy_ * vx;
+    //  double ay_des = -Kp_xy_ * vy;
  
      const double tilt_max = tilt_max_deg_ * M_PI / 180.0;
-     cmd.angular.x = std::clamp( ay_des / g_, -tilt_max, tilt_max);
-     cmd.angular.y = std::clamp(-ax_des / g_, -tilt_max, tilt_max);
+     cmd.angular.x = std::clamp(-ay_des / g_, -tilt_max, tilt_max);
+     cmd.angular.y = std::clamp(ax_des / g_, -tilt_max, tilt_max);
 
-    ROS_INFO("cmd.angular.x: %f, cmd.angular.y: %f, cmd.linear.z: %f", cmd.angular.x, cmd.angular.y, cmd.linear.z);
+    // ROS_INFO("cmd.angular.x: %f, cmd.angular.y: %f, cmd.linear.z: %f", cmd.angular.x, cmd.angular.y, cmd.linear.z);
  
      publish(cmd);
    }
