@@ -13,7 +13,7 @@
  #include <atomic>
  #include <mutex>
  
- enum class Mode { LANDED, IDLE, TAKEOFF, HOVER, FLYING, LANDING, STOPPED_FLYING };
+ enum class Mode { LANDED, IDLE, TAKEOFF, HOVER, LANDING, STOPPED_FLYING };
  
  class HoverController
  {
@@ -59,7 +59,6 @@
      a_max_min_ = 13.0;
      g_         = 9.81;
      pwm_per_g_ = pwm_max_ / a_max_;
-     theta_des_ = 0.0; phi_des_ = 0.0;
  
      /* ─── I/O ────────────────────────────────────────────── */
      range_sub_     = nh.subscribe("crazyflieZRange", 10,
@@ -72,9 +71,6 @@
                                    &HoverController::isFlyingCb, this);
  
      cmd_pub_  = nh.advertise<geometry_msgs::Twist>("copilot_cmd_vel", 10);
-
-     cmd_sub_ = nh.subscribe("cmd_vel", 10,
-                                   &HoverController::cmdCb, this);
  
      take_srv_ = nh.advertiseService("takeoff",
                   &HoverController::takeoffSrv, this);
@@ -97,7 +93,7 @@
     }
    void velCb(const geometry_msgs::Vector3Stamped::ConstPtr& m)
    { vx_ = m->vector.x;  vy_ = m->vector.y; dz_ = m->vector.z; 
-      // ROS_INFO_STREAM("x_dot: " << vx_ << " y_dot: " << vy_ << " dz: " << dz_);
+      // ROS_INFO_STREAM("vx: " << vx_ << " vy: " << vy_ << " dz: " << dz_);
    }
    void attCb(const geometry_msgs::Vector3Stamped::ConstPtr& m)
    { phi_ = m->vector.x; theta_ = m->vector.y; 
@@ -160,25 +156,13 @@
      }
      res.success = false;  res.message = "Landing timeout";  return true;
    }
-
-    /* --- cmd_vel topic (non-blocking) --------------------- */
-    void cmdCb(const geometry_msgs::Twist::ConstPtr& m)
-    {
-      std::unique_lock<std::mutex> lock(state_mtx_);
-      // if (mode_ != Mode::HOVER) return;
-
-      // mode_ = Mode::FLYING;
-      phi_des_ = std::clamp(m->angular.x * tilt_max, -tilt_max, tilt_max);
-      theta_des_ = std::clamp(m->angular.y * tilt_max, -tilt_max, tilt_max);
-      ROS_INFO("cmd_vel received");
-    }
  
    /* --- TIMER: core control loop (owns motor output) ----- */
    void controlLoop(const ros::TimerEvent&)
    {
      /* Copy atomics without lock */
      const double z   = z_.load(),   dz  = dz_.load();
-     const double x_dot  = vx_.load(),  y_dot  = vy_.load();
+     const double vx  = vx_.load(),  vy  = vy_.load();
      const double phi = phi_.load(), theta = theta_.load();
      const bool   flying = is_flying_.load();
  
@@ -243,28 +227,21 @@
      }
  
      /* ---------- XY drift damping -------------------------- */
-     double x_ddot = 0.0, y_ddot = 0.0;
+     double d_vx = 0.0, d_vy = 0.0;
      if (dt > 1e-3) {
-       x_ddot = (x_dot - x_dot_prev_) / dt;
-       y_ddot = (y_dot - y_dot_prev_) / dt;
+       d_vx = (vx - vx_prev_) / dt;
+       d_vy = (vy - vy_prev_) / dt;
      }
-     x_dot_prev_ = x_dot;  y_dot_prev_ = y_dot;
-     
+     vx_prev_ = vx;  vy_prev_ = vy;
+ 
+     double ax_des = -(Kp_xy_ * vx + Kd_xy_ * d_vx);
+     double ay_des = -(Kp_xy_ * vy + Kd_xy_ * d_vy);
+    //  double ax_des = -Kp_xy_ * vx;
+    //  double ay_des = -Kp_xy_ * vy;
+ 
      const double tilt_max = tilt_max_deg_ * M_PI / 180.0;
-
-     if (theta_des_ == 0.0) {
-        double x_ddot_des = -(Kp_xy_ * x_dot + Kd_xy_ * x_ddot);
-        cmd.angular.y = std::clamp(x_ddot_des / g_, -tilt_max, tilt_max);
-     } else {
-        cmd.angular.y = std::clamp(theta_des_, -tilt_max, tilt_max);
-     }
-
-     if (phi_des_ == 0.0) {
-        double y_ddot_des = -(Kp_xy_ * y_dot + Kd_xy_ * y_ddot);
-        cmd.angular.x = std::clamp(-y_ddot_des / g_, -tilt_max, tilt_max);
-     } else {
-        cmd.angular.x = std::clamp(phi_des_, -tilt_max, tilt_max);
-     }
+     cmd.angular.x = std::clamp(-ay_des / g_, -tilt_max, tilt_max);
+     cmd.angular.y = std::clamp(ax_des / g_, -tilt_max, tilt_max);
 
     // ROS_INFO("cmd.angular.x: %f, cmd.angular.y: %f, cmd.linear.z: %f", cmd.angular.x, cmd.angular.y, cmd.linear.z);
  
@@ -275,7 +252,7 @@
    void publish(const geometry_msgs::Twist& msg) { cmd_pub_.publish(msg); }
  
    /* ========== ROS plumbing =================================*/
-   ros::Subscriber range_sub_, vel_sub_, att_sub_, is_flying_sub_, cmd_sub_;
+   ros::Subscriber range_sub_, vel_sub_, att_sub_, is_flying_sub_;
    ros::Publisher  cmd_pub_;
    ros::ServiceServer take_srv_, land_srv_;
    ros::Timer timer_;
@@ -291,7 +268,6 @@
    double tilt_max_deg_;
    double g_, pwm_max_, pwm_min_, pwm_per_g_;
    double a_max_, a_max_max_, a_max_min_;
-   double theta_des_, phi_des_;
  
    /* atomics (sensor data & flag) */
    std::atomic<double> z_{0}, dz_{0}, vx_{0}, vy_{0};
@@ -303,7 +279,7 @@
    ros::Time start_time_, idle_start_, takeoff_start_, land_start_;
    ros::Time prev_loop_time_{ros::Time::now()};
    double z_init_{0}, z_land_init_{0};
-   double x_dot_prev_{0}, y_dot_prev_{0};
+   double vx_prev_{0}, vy_prev_{0};
  };
  
  /* ---------------- main ------------------------------------ */

@@ -1,16 +1,20 @@
 <launch>
     <arg name="namespace" default="cf1" />
     <arg name="ID" default="" /> 
+    <arg name="use_copilot" default="true" />
+    <arg name="use_joy" default="true" />
     
-    <group ns="cf1">
+    <group ns="$(arg namespace)">
         <node pkg="crazyflie_server" type="crazyflie_server.py" name="crazyflie_server_node" output="screen">
             <rosparam file="$(find crazyflie_server)/config/crazyflie_config.yaml" command="load" />
             <param if="$(eval arg('ID') != '')" name="ID" value="$(arg ID)" />
-            <param name="is_running_with_copilot" value="true" />
+            <param name="is_running_with_copilot" value="$(arg use_copilot)" />
         </node>
 
-        <node pkg="crazyflie_copilot" type="crazyflie_copilot" name="crazyflie_copilot_node" output="screen">
+        <node pkg="crazyflie_copilot" type="crazyflie_copilot" name="crazyflie_copilot_node" if="$(arg use_copilot)" output="screen">
             <param name="kp_xy" value="1.0" />
         </node>
+
+        <include if="$(arg use_joy)" file="$(find crazyflie_server)/launch/cf_joy.launch"/>
     </group>
 </launch>
