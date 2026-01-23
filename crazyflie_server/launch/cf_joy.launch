@@ -1,0 +1,10 @@
+<!-- cf_joy.launch -->
+<launch>
+  <arg name="joy_dev"   default="/dev/input/js0"/>
+
+  <node pkg="joy" type="joy_node" name="joy">
+    <param name="dev" value="$(arg joy_dev)"/>
+  </node>
+
+  <node pkg="crazyflie_server" type="cf_joy_twist.py" name="cf_joy_twist" output="screen"/>
+</launch>
