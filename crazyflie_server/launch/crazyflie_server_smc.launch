@@ -1,0 +1,81 @@
+<launch>
+    <!-- <arg name="namespace" default="cf1" /> -->
+    <arg name="ids" default="" /> 
+    <arg name="use_copilot" default="false" />
+    <arg name="use_joy" default="true" />
+
+    <arg name="use_smc" default="1" />
+    <arg name="k_smc_roll" default="5000" />
+    <arg name="k_smc_pitch" default="5000" />
+    <arg name="k_smc_yaw" default="0" />
+
+    <arg name="lambda_smc_roll" default="5" />
+    <arg name="lambda_smc_pitch" default="5" />
+    <arg name="lambda_smc_yaw" default="1" />
+
+    <arg name="sigma_smc_roll" default="0.5" />
+    <arg name="sigma_smc_pitch" default="0.5" />
+    <arg name="sigma_smc_yaw" default="1" />
+
+    <arg name="k_phi" default="10.0"/>
+    <arg name="k_theta" default="10.0"/>
+    <arg name="k_psi" default="2.5"/>
+
+    <arg name="sat_roll" default="5"/>
+    <arg name="sat_pitch" default="5"/>
+    <arg name="sat_yaw" default="3"/>
+
+    <arg name="ki_smc_roll" default="5000" />
+    <arg name="ki_smc_pitch" default="5000" />
+    <arg name="ki_smc_yaw" default="0" />
+
+    <arg name="delta_smc_roll" default="0.5" />
+    <arg name="delta_smc_pitch" default="0.5" />
+    <arg name="delta_smc_yaw" default="0" />
+    
+    <!-- <group ns="$(arg namespace)"> -->
+    <node pkg="crazyflie_server" type="crazyflie_server_smc.py" name="crazyflie_server_node" output="screen">
+        <rosparam file="$(find crazyflie_server)/config/crazyflie_config.yaml" command="load" />
+        <param if="$(eval arg('ids') != '')" name="ids" value="$(arg ids)" />
+        <param name="is_running_with_copilot" value="$(arg use_copilot)" />
+
+        <param name="k_smc_roll" value="$(arg k_smc_roll)" />
+        <param name="k_smc_pitch" value="$(arg k_smc_pitch)" />
+        <param name="k_smc_yaw" value="$(arg k_smc_yaw)" />
+
+        <param name="lambda_smc_roll" value="$(arg lambda_smc_roll)" />
+        <param name="lambda_smc_pitch" value="$(arg lambda_smc_pitch)" />
+        <param name="lambda_smc_yaw" value="$(arg lambda_smc_yaw)" />
+
+        <param name="sigma_smc_roll" value="$(arg sigma_smc_roll)" />
+        <param name="sigma_smc_pitch" value="$(arg sigma_smc_pitch)" />
+        <param name="sigma_smc_yaw" value="$(arg sigma_smc_yaw)" />
+
+        <param name="k_phi" value="$(arg k_phi)" />
+        <param name="k_theta" value="$(arg k_theta)" />
+        <param name="k_psi" value="$(arg k_psi)" />
+
+        <param name="sat_roll" value="$(arg sat_roll)" />
+        <param name="sat_pitch" value="$(arg sat_pitch)" />
+        <param name="sat_yaw" value="$(arg sat_yaw)" />
+
+        <param name="ki_smc_roll" value="$(arg ki_smc_roll)" />
+        <param name="ki_smc_pitch" value="$(arg ki_smc_pitch)" />
+        <param name="ki_smc_yaw" value="$(arg ki_smc_yaw)" />
+
+        <param name="delta_smc_roll" value="$(arg delta_smc_roll)" />
+        <param name="delta_smc_pitch" value="$(arg delta_smc_pitch)" />
+        <param name="delta_smc_yaw" value="$(arg delta_smc_yaw)" />
+
+        <param name="use_smc" value="$(arg use_smc)" />
+    </node>
+
+    <node pkg="crazyflie_copilot" type="crazyflie_copilot" name="crazyflie_copilot_node" if="$(arg use_copilot)" output="screen">
+        <!-- <param if="$(eval arg('ids') != '')" name="ids" value="$(arg ids)" /> -->
+        <rosparam if="$(eval arg('ids') != '')" param="ids" subst_value="true">$(arg ids)</rosparam>
+        <param name="kp_xy" value="1.0" />
+    </node>
+
+    <!-- <include if="$(arg use_joy)" file="$(find crazyflie_server)/launch/cf_joy.launch"/> -->
+    <!-- </group> -->
+</launch>

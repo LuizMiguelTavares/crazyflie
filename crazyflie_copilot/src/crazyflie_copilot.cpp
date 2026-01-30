@@ -164,6 +164,7 @@
     /* --- cmd_vel topic (non-blocking) --------------------- */
     void cmdCb(const geometry_msgs::Twist::ConstPtr& m)
     {
+      const double tilt_max = tilt_max_deg_ * M_PI / 180.0;
       std::unique_lock<std::mutex> lock(state_mtx_);
       // if (mode_ != Mode::HOVER) return;
 

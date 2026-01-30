@@ -6,13 +6,18 @@ import signal
 import math
 
 import rospy
-from geometry_msgs.msg import Twist, Vector3Stamped, PoseStamped
+from geometry_msgs.msg import Twist, Vector3Stamped, PoseStamped, Vector3, Pose
 from std_msgs.msg import Bool, Float32
 
 import cflib
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.utils import uri_helper
+
+import struct
+from cflib.crtp.crtpstack import CRTPPacket, CRTPPort
+
+# ---- custom generic setpoint type (must match firmware enum accType) ----
 
 def id_to_uri(cf_id: int) -> str:
     """Return a radio URI given a numeric Crazyflie ID (1…8)."""
@@ -36,26 +41,55 @@ class CrazyflieServer:
         self.cf_id = cf_id
 
         # ---------- parameters (read from /cf<ID>/ namespace) ----------
-        # get = lambda name, default: rospy.get_param(f"{self.ns}/{name}", default)
-
-        self.use_body_rate          = rospy.get_param("~use_body_rate", True)
+        self.use_body_rate          = rospy.get_param("~use_body_rate", False)
         self.filt_cutoff            = rospy.get_param("~filt_cutoff", 10)
-        self.outerLoopActive        = rospy.get_param("~outerLoopActive", True)
-        self.pos_LOG                = rospy.get_param("~pos_LOG", True)
+        self.outerLoopActive        = rospy.get_param("~outerLoopActive", False)
+        self.pos_LOG                = rospy.get_param("~pos_LOG", False)
         self.vel_LOG                = rospy.get_param("~vel_LOG", False)
         self.ang_LOG                = rospy.get_param("~ang_LOG", False)
         self.thrust_LOG             = rospy.get_param("~thrust_LOG", False)
         self.acc_LOG                = rospy.get_param("~acc_LOG", False)
         self.gyro_raw_LOG           = rospy.get_param("~gyro_raw_LOG", False)
         self.gyro_LOG               = rospy.get_param("~gyro_LOG", False)
-        self.stab_rate_LOG          = rospy.get_param("~stab_rate_LOG", True)
-        self.control_time_us_LOG    = rospy.get_param("~control_time_us_LOG", True)
+        self.stab_rate_LOG          = rospy.get_param("~stab_rate_LOG", False)
+        self.control_time_us_LOG    = rospy.get_param("~control_time_us_LOG", False)
         self.is_running_with_copilot= rospy.get_param("~is_running_with_copilot", False)
         self.stabilizer_controller  = rospy.get_param("~stabilizer_controller", 1) # 1 = PID, 2 = Mellinger, 3 = INDI, 4 = Brescianini
         self.stabilizer_estimator   = rospy.get_param("~stabilizer_estimator", 2) # 1 = Complementary filter, 2 = EKF, 3 = unscented Kalman filter
-        
-        self.test = None
-        
+
+        # Parâmetros SMC
+        self.use_smc                = rospy.get_param("~use_smc", 0)
+        self.k_smc_roll             = rospy.get_param("~k_smc_roll", 1)
+        self.k_smc_pitch            = rospy.get_param("~k_smc_pitch", 1)
+        self.k_smc_yaw              = rospy.get_param("~k_smc_yaw", 1)
+
+        self.lambda_smc_roll        = rospy.get_param("~lambda_smc_roll", 1)
+        self.lambda_smc_pitch       = rospy.get_param("~lambda_smc_pitch", 1)
+        self.lambda_smc_yaw         = rospy.get_param("~lambda_smc_yaw", 1)
+
+        self.sigma_smc_roll         = rospy.get_param("~sigma_smc_roll", 1)
+        self.sigma_smc_pitch        = rospy.get_param("~sigma_smc_pitch", 1)
+        self.sigma_smc_yaw          = rospy.get_param("~sigma_smc_yaw", 1)
+
+        self.ki_smc_roll             = rospy.get_param("~ki_smc_roll", 1)
+        self.ki_smc_pitch            = rospy.get_param("~ki_smc_pitch", 1)
+        self.ki_smc_yaw              = rospy.get_param("~ki_smc_yaw", 1)
+
+        self.delta_smc_roll             = rospy.get_param("~delta_smc_roll", 1)
+        self.delta_smc_pitch            = rospy.get_param("~delta_smc_pitch", 1)
+        self.delta_smc_yaw              = rospy.get_param("~delta_smc_yaw", 1)
+
+        self.k_phi = rospy.get_param("~k_phi", None)
+        self.k_theta = rospy.get_param("~k_theta", None)
+        self.k_psi = rospy.get_param("~k_psi", None)
+
+        self.sat_roll = rospy.get_param("~sat_roll", None)
+        self.sat_pitch = rospy.get_param("~sat_pitch", None)
+        self.sat_yaw = rospy.get_param("~sat_yaw", None)
+
+        self.ax = 0
+        self.ay = 0
+        self.az = 0
         # print(f"Im running with copilot: {self.is_running_with_copilot}")
 
         # ---------- Crazyflie link ----------
@@ -82,6 +116,8 @@ class CrazyflieServer:
         else:
             rospy.Subscriber(topic("cmd_vel"), Twist, self._twist_cb)
 
+        rospy.Subscriber(topic("cmd_vel_smc"), Pose, self._twist_cb_smc)
+        
         # pubs (created lazily if log enabled)
         if self.vel_LOG:             self.pub_vel          = rospy.Publisher(topic("crazyflieVel"),           Vector3Stamped, queue_size=10)
         if self.ang_LOG:             self.pub_ang          = rospy.Publisher(topic("crazyflieAng"),           Vector3Stamped, queue_size=10)
@@ -92,15 +128,23 @@ class CrazyflieServer:
         if self.stab_rate_LOG:       self.pub_stab_rate    = rospy.Publisher(topic("crazyflieStabRate"),      Float32, queue_size=10)
         if self.control_time_us_LOG: self.control_time_us  = rospy.Publisher(topic("crazyflieControlTimeUs"), Float32, queue_size=10)
 
-        self.pub_is_flying       = rospy.Publisher(topic("crazyflieIsFlying"),   Bool,    queue_size=10)
-        self.pub_can_fly         = rospy.Publisher(topic("crazyflieCanFly"),     Bool,    queue_size=10)
-        self.pub_z_range         = rospy.Publisher(topic("crazyflieZRange"),     Vector3Stamped, queue_size=10)
-        self.pub_battery_voltage = rospy.Publisher(topic("crazyflieBatteryVoltage"), Float32, queue_size=10)
-        self.pub_battery_level   = rospy.Publisher(topic("crazyflieBatteryLevel"),   Float32, queue_size=10)
-        self.pub_du_r            = rospy.Publisher(topic("crazyflieINDIDuR"),     Float32, queue_size=10)
-        self.pub_pos         = rospy.Publisher(topic("crazyfliePos"), Vector3Stamped, queue_size=10)
-        self.pub_desired         = rospy.Publisher(topic("crazyflieDesired"), Vector3Stamped, queue_size=10)
+        
+        # self.pub_ang_filt        = rospy.Publisher(topic("crazyflieAngFilt"),         Vector3Stamped,    queue_size=10)
 
+        self.pub_is_flying       = rospy.Publisher(topic("crazyflieIsFlying"),        Bool,    queue_size=10)
+        self.pub_can_fly         = rospy.Publisher(topic("crazyflieCanFly"),          Bool,    queue_size=10)
+        #self.pub_z_range         = rospy.Publisher(topic("crazyflieZRange"),         Vector3Stamped, queue_size=10)
+        self.pub_battery_voltage = rospy.Publisher(topic("crazyflieBatteryVoltage"), Float32, queue_size=10)
+        #self.pub_battery_level   = rospy.Publisher(topic("crazyflieBatteryLevel"),   Float32, queue_size=10)
+        #self.pub_pos             = rospy.Publisher(topic("crazyfliePos"),            Vector3Stamped, queue_size=10)
+        #self.pub_desired         = rospy.Publisher(topic("crazyflieDesired"),        Vector3Stamped, queue_size=10)
+        self.pub_smc_out         = rospy.Publisher(topic("crazyflieSMCOut"),          Vector3Stamped, queue_size=10)
+        self.pub_pid_out         = rospy.Publisher(topic("crazyfliePIDOut"),          Vector3Stamped, queue_size=10)
+        self.pub_pid_out_pitch   = rospy.Publisher(topic("crazyfliePIDOutPitch"),     Vector3Stamped, queue_size=10)
+        self.pub_s_smc           = rospy.Publisher(topic("crazyflieSSMC"),            Vector3Stamped, queue_size=10)
+        self.pub_k_smc           = rospy.Publisher(topic("crazyflieKSMC"),            Vector3Stamped, queue_size=10)
+        #self.pub_er_smc          = rospy.Publisher(topic("crazyflieErSMC"),           Vector3Stamped, queue_size=10)
+  
         # ---- External pose (OptiTrack/VRPN) ----
         self._have_extpose = False
         self._ext_x = self._ext_y = self._ext_z = 0.0
@@ -113,8 +157,7 @@ class CrazyflieServer:
         )
 
         # send external pose at fixed rate (50–100 Hz is fine; start with 60)
-        self._extpose_timer = rospy.Timer(rospy.Duration(1.0/60.0), self._send_extpose)
-
+        self._extpose_timer = rospy.Timer(rospy.Duration(1.0/100.0), self._send_extpose)
 
         # flags to print “log started” once
         self._flags = {}
@@ -126,12 +169,50 @@ class CrazyflieServer:
         rospy.Timer(rospy.Duration(2.0), self._init_cf, oneshot=True)
 
     def _init_cf(self, _):
-        #self._cf.param.get_value("pid_rate.pitch_k_smc", self.test)
-        #self._cf.param.set_value("pid_rate.pitch_k_smc", 2.0)
-        self._cf.param.set_value("pid_rate.pitch_k_smc", 2.0)
-        self.test = self._cf.param.get_value("pid_rate.pitch_k_smc")
-        print(f"the value of the pitch k smc is {self.test}")
-        # set params
+        if self.use_smc:
+            self._cf.param.set_value("smc.useSMC", 1)
+        else:
+            self._cf.param.set_value("smc.useSMC", 0)
+        
+        self._cf.param.set_value("pid_rate.roll_k_smc", self.k_smc_roll)
+        self._cf.param.set_value("pid_rate.pitch_k_smc", self.k_smc_pitch)
+        self._cf.param.set_value("pid_rate.yaw_k_smc", self.k_smc_yaw)
+
+        self._cf.param.set_value("pid_rate.roll_lambda_smc", self.lambda_smc_roll)
+        self._cf.param.set_value("pid_rate.pitch_lambda_smc", self.lambda_smc_pitch)
+        self._cf.param.set_value("pid_rate.yaw_lambda_smc", self.lambda_smc_yaw)
+
+        self._cf.param.set_value("pid_rate.roll_sigma_smc", self.sigma_smc_roll)
+        self._cf.param.set_value("pid_rate.pitch_sigma_smc", self.sigma_smc_pitch)
+        self._cf.param.set_value("pid_rate.yaw_sigma_smc", self.sigma_smc_yaw)
+
+        self._cf.param.set_value("pid_rate.roll_ki_smc", self.ki_smc_roll)
+        self._cf.param.set_value("pid_rate.pitch_ki_smc", self.ki_smc_pitch)
+        self._cf.param.set_value("pid_rate.yaw_ki_smc", self.ki_smc_yaw)
+
+        self._cf.param.set_value("pid_rate.roll_delta_smc", self.delta_smc_roll)
+        self._cf.param.set_value("pid_rate.pitch_delta_smc", self.delta_smc_pitch)
+        self._cf.param.set_value("pid_rate.yaw_delta_smc", self.delta_smc_yaw)
+
+        if self.k_phi is not None:
+            self._cf.param.set_value("smc.k_phi", float(self.k_phi))
+            #print(self.k_phi)
+            #print(f"The value of the K_phi is: {self._cf.param.get_value('smc.k_phi')}")
+        if self.k_theta is not None:
+            self._cf.param.set_value("smc.k_theta", float(self.k_theta))
+            #print(f"The value of the k_theta is: {self._cf.param.get_value('smc.k_theta')}")
+        if self.k_psi is not None:
+            self._cf.param.set_value("smc.k_psi", float(self.k_psi))
+            #print(f"The value of the k_psi is: {self._cf.param.get_value('smc.k_psi')}")
+        
+        if self.sat_roll is not None:
+            self._cf.param.set_value("smc.sat_roll", float(self.sat_roll))
+            print(f"The value of the sat_roll is: {self._cf.param.get_value('smc.sat_roll')}")
+        if self.sat_pitch is not None:
+            self._cf.param.set_value("smc.sat_pitch", float(self.sat_pitch))
+        if self.sat_yaw is not None:
+            self._cf.param.set_value("smc.sat_yaw", float(self.sat_yaw))
+
         try:
             self._cf.param.set_value("stabilizer.controller", self.stabilizer_controller)
             self._cf.param.set_value("stabilizer.estimator",  self.stabilizer_estimator)
@@ -141,10 +222,12 @@ class CrazyflieServer:
                 self._cf.param.set_value("flightmode.stabModeRoll", 0)
                 self._cf.param.set_value("flightmode.stabModePitch",0)
                 self._cf.param.set_value("flightmode.stabModeYaw",  0)
+                print("Sending attitude rate setpoints.")
             else:
                 self._cf.param.set_value("flightmode.stabModeRoll", 1)
                 self._cf.param.set_value("flightmode.stabModePitch",1)
                 self._cf.param.set_value("flightmode.stabModeYaw",  0)
+                print("Sending attitude setpoints.")
         except Exception as e:
             rospy.logwarn(f"[cf{self.cf_id}] param set failed: {e}")
 
@@ -179,24 +262,57 @@ class CrazyflieServer:
         lg_bat.add_variable("pm.batteryLevel", "int8_t")
         start_log(lg_bat, self._cb_battery)
 
-        lg_range = LogConfig("Range", 33)
-        lg_range.add_variable("range.zrange", "float")
-        start_log(lg_range, self._cb_range)
-
-        lg_desired = LogConfig("Desired", 33)
-        lg_desired.add_variable("ctrltarget.rollRate", "float")
-        lg_desired.add_variable("ctrltarget.pitchRate", "float")
-        lg_desired.add_variable("ctrltarget.yaw", "float")
-        start_log(lg_desired, self._cb_desired)
+        #lg_range = LogConfig("Range", 33)
+        #lg_range.add_variable("range.zrange", "float")
+        #start_log(lg_range, self._cb_range)
         
-        #lg_smc = LogConfig("Output SMC", 33)
-        #lg_smc.add_variable("pid_rate.roll_outSMC", "float")
-        #start_log(lg_smc, self._cb_smc)
+        # lg_smc_out = LogConfig("Output SMC", 33)
+        # lg_smc_out.add_variable("pid_rate.roll_outSMC", "float")
+        # lg_smc_out.add_variable("pid_rate.pitch_outSMC", "float")
+        # lg_smc_out.add_variable("pid_rate.yaw_outSMC", "float")
+        # start_log(lg_smc_out, self._cb_smc_out)
+
+        lg_pid_out = LogConfig("Output PID", 33)
+        lg_pid_out.add_variable("pid_rate.roll_outPID", "float")
+        lg_pid_out.add_variable("pid_rate.pitch_outPID", "float")
+        lg_pid_out.add_variable("pid_rate.yaw_outPID", "float")
+        start_log(lg_pid_out, self._cb_pid_out)
+
+        # lg_s_smc = LogConfig("s SMC", 33)
+        # lg_s_smc.add_variable("pid_rate.roll_s_smc", "float")
+        # lg_s_smc.add_variable("pid_rate.pitch_s_smc", "float")
+        # lg_s_smc.add_variable("pid_rate.yaw_s_smc", "float")
+        # start_log(lg_s_smc, self._cb_s_smc)
+
+        lg_pid_out_pitch = LogConfig("Out PID separate", 33)
+        lg_pid_out_pitch.add_variable("pid_rate.pitch_outP", "float")
+        lg_pid_out_pitch.add_variable("pid_rate.pitch_outI", "float")
+        lg_pid_out_pitch.add_variable("pid_rate.pitch_outD", "float")
+        start_log(lg_pid_out_pitch, self._cb_pid_out_pitch)
+
+        
+        lg_pid_out_pitch = LogConfig("K SMC", 33)
+        lg_pid_out_pitch.add_variable("pid_rate.roll_k_smc", "float")
+        lg_pid_out_pitch.add_variable("pid_rate.pitch_k_smc", "float")
+        lg_pid_out_pitch.add_variable("pid_rate.yaw_k_smc", "float")
+        start_log(lg_pid_out_pitch, self._cb_k_smc)
+
+        # lg_er_smc = LogConfig("Er SMC", 33)
+        # lg_er_smc.add_variable("smc.er_phi", "float")
+        # lg_er_smc.add_variable("smc.er_theta", "float")
+        # lg_er_smc.add_variable("smc.er_psi", "float")
+        # start_log(lg_er_smc, self._cb_er_smc)
+
+        # lg_desired = LogConfig("Desired", 33)
+        # lg_desired.add_variable("controller.rollRate", "float")
+        # lg_desired.add_variable("controller.pitchRate", "float")
+        # lg_desired.add_variable("controller.yawRate", "float")
+        # start_log(lg_desired, self._cb_desired)
         
         if self.control_time_us_LOG:
             lg_control_time = LogConfig("Control Time us", 100)
             lg_control_time.add_variable("timeControl.control_us", "float")
-            start_log(lg_control_time, self._cb_lg_control_time)
+            start_log(lg_control_time, self._cb_lg_z_time)
         
         if self.stab_rate_LOG:
             lg_stabilizer_rate = LogConfig("Stabilizer Rate", 1000)
@@ -222,6 +338,11 @@ class CrazyflieServer:
                 lg.add_variable(a, "float")
             start_log(lg, self._cb_angle)
 
+            # lg_filt = LogConfig("Angle filt", 16)
+            # for a in ("smc.phi_filt", "smc.theta_filt", "smc.psi_filt"):
+            #     lg_filt.add_variable(a, "float")
+            # start_log(lg_filt, self._cb_angle_filt)
+
         if self.thrust_LOG:
             lg = LogConfig("Thrust", 16)
             lg.add_variable("stabilizer.thrust", "float")
@@ -244,6 +365,8 @@ class CrazyflieServer:
             for g in ("gyro.x", "gyro.y", "gyro.z"):
                 lg.add_variable(g, "float")
             start_log(lg, self._cb_gyro)
+
+        print(f"The value of the K_phi is: {self._cf.param.get_value('smc.k_phi')}")
 
     # ───── log callbacks (publish to ROS) ──────────────────────────────────────
     def _once(self, key, txt):
@@ -270,24 +393,75 @@ class CrazyflieServer:
         msg.vector.z = z
         self.pub_z_range.publish(msg)
         
-    def _cb_smc(self, ts, data, _):
+    def _cb_smc_out(self, ts, data, _):
         self._once("out_smc", "Out SMC log started")
-        out_smc = data["pid_rate.roll_outSMC"]
-        
-        #print(out_smc)
-        #msg = Vector3Stamped()
-        #msg.header.stamp = rospy.Time.now()
-        #msg.vector.z = z
-        #self.pub_z_range.publish(msg)
+
+        smc_out = Vector3Stamped()
+        smc_out.header.stamp = rospy.Time.now()
+        smc_out.vector.x = data["pid_rate.roll_outSMC"]
+        smc_out.vector.y = data["pid_rate.pitch_outSMC"]
+        smc_out.vector.z = data["pid_rate.yaw_outSMC"]
+        self.pub_smc_out.publish(smc_out)
+
+    def _cb_pid_out(self, ts, data, _):
+        self._once("out_pid", "Out PID log started")
+
+        pid_out = Vector3Stamped()
+        pid_out.header.stamp = rospy.Time.now()
+        pid_out.vector.x = data["pid_rate.roll_outPID"]
+        pid_out.vector.y = data["pid_rate.pitch_outPID"]
+        pid_out.vector.z = data["pid_rate.yaw_outPID"]
+        self.pub_pid_out.publish(pid_out)
+
+    def _cb_pid_out_pitch(self, ts, data, _):
+        self._once("out_pid_", "Out PID pitch log started")
+
+        pid_out = Vector3Stamped()
+        pid_out.header.stamp = rospy.Time.now()
+        pid_out.vector.x = data["pid_rate.pitch_outP"]
+        pid_out.vector.y = data["pid_rate.pitch_outI"]
+        pid_out.vector.z = data["pid_rate.pitch_outD"]
+        self.pub_pid_out_pitch.publish(pid_out)
+
+    def _cb_k_smc(self, ts, data, _):
+        self._once("k_smc", "K smc log started")
+
+        pid_out = Vector3Stamped()
+        pid_out.header.stamp = rospy.Time.now()
+        pid_out.vector.x = data["pid_rate.roll_k_smc"]
+        pid_out.vector.y = data["pid_rate.pitch_k_smc"]
+        pid_out.vector.z = data["pid_rate.yaw_k_smc"]
+        self.pub_k_smc.publish(pid_out)
+    
+
+    def _cb_s_smc(self, ts, data, _):
+        self._once("s_smc", "Non saturated s SMC log started")
+
+        s_smc = Vector3Stamped()
+        s_smc.header.stamp = rospy.Time.now()
+        s_smc.vector.x = data["pid_rate.roll_s_smc"]
+        s_smc.vector.y = data["pid_rate.pitch_s_smc"]
+        s_smc.vector.z = data["pid_rate.yaw_s_smc"]
+        self.pub_s_smc.publish(s_smc)
+
+    def _cb_er_smc(self, ts, data, _):
+        self._once("er_smc", "Er SMC log started")
+
+        s_smc = Vector3Stamped()
+        s_smc.header.stamp = rospy.Time.now()
+        s_smc.vector.x = data["smc.er_phi"]
+        s_smc.vector.y = data["smc.er_theta"]
+        s_smc.vector.z = data["smc.er_psi"]
+        self.pub_er_smc.publish(s_smc)
 
     def _cb_desired(self, ts, data, _):
         self._once("pos", "Position log started")
         # estimated position
         pos = Vector3Stamped()
         pos.header.stamp = rospy.Time.now()
-        pos.vector.x = data["ctrltarget.rollRate"]
-        pos.vector.y = data["ctrltarget.pitchRate"]
-        pos.vector.z = data["ctrltarget.yaw"]
+        pos.vector.x = data["controller.rollRate"]
+        pos.vector.y = data["controller.pitchRate"]
+        pos.vector.z = data["controller.yawRate"]
         self.pub_desired.publish(pos)
     
     def _cb_stabilizer_rate(self, ts, data, _):
@@ -330,6 +504,15 @@ class CrazyflieServer:
         msg.vector.z = data["stateEstimate.yaw"]   * deg2rad
         self.pub_ang.publish(msg)
 
+    def _cb_angle_filt(self, ts, data, _):
+        self._once("ang_filt", "Angle log started")
+        msg = Vector3Stamped()
+        msg.header.stamp = rospy.Time.now()
+        msg.vector.x = data["smc.phi_filt"]
+        msg.vector.y = -data["smc.theta_filt"]
+        msg.vector.z = data["smc.psi_filt"]
+        self.pub_ang_filt.publish(msg)
+    
     def _cb_thrust(self, ts, data, _):
         self._once("thr", "Thrust log started")
         msg = Vector3Stamped()
@@ -374,13 +557,29 @@ class CrazyflieServer:
             pitchrate =  msg.angular.y * 57.2958
             yawrate   = -msg.angular.z * 57.2958
             thrust    =  int(msg.linear.z)
-            self._cf.commander.send_setpoint(rollrate, pitchrate, yawrate, thrust)
+
+            #self._send_acc_setpoint(rollrate, pitchrate, yawrate, thrust, self.ax, self.ay, self.az)
         else:
             roll   =  msg.angular.x * 57.2958
             pitch  =  msg.angular.y * 57.2958
             yawrate= -msg.angular.z * 57.2958
             thrust =  int(msg.linear.z)
-            self._cf.commander.send_setpoint(roll, pitch, yawrate, thrust)
+            #self._cf.commander.send_setpoint(roll, pitch, yawrate, thrust)
+
+    
+    def _twist_cb_smc(self, msg: Pose):
+        ax   =  msg.position.x
+        ay   =  msg.position.y
+        az   =  msg.position.z
+
+        rollrate  =  msg.orientation.x * 57.2958
+        pitchrate =  msg.orientation.y * 57.2958
+        yawrate   = -msg.orientation.z * 57.2958
+        thrust    =  int(msg.orientation.w)
+
+        #print(thrust)
+
+        self._send_acc_setpoint(rollrate, pitchrate, yawrate, thrust, ax, ay, az) 
 
     def _vrpn_pose_cb(self, msg: PoseStamped):
         
@@ -398,8 +597,8 @@ class CrazyflieServer:
     def _send_extpose(self, event):
         if not self._have_extpose:
             return
-        else:
-            return
+        # else:
+        #     return
 
         qx, qy, qz, qw = self._ext_qx, self._ext_qy, self._ext_qz, self._ext_qw
         n = math.sqrt(qx*qx + qy*qy + qz*qz + qw*qw)
@@ -425,6 +624,32 @@ class CrazyflieServer:
             rospy.loginfo(f"[cf{self.cf_id}] kalman reset done (after first VRPN)")
         except Exception as e:
             rospy.logwarn(f"[cf{self.cf_id}] kalman reset failed: {e}")
+    
+    TYPE_ACC = 12
+    MIN_THRUST = 1000
+    MAX_THRUST = 60000
+    def _send_acc_setpoint(self, roll_deg, pitch_deg, yaw_deg, thrust_u16, ax, ay, az):
+        """
+        Firmware struct (packed):
+          float roll, pitch, yaw; uint16 thrust; float ax, ay, az
+        Packet on the wire:pitchRate
+          [type:uint8][roll f32][pitch f32][yaw f32][thrust u16][ax f32][ay f32][az f32]
+        Total payload = 1 + 4*3 + 2 + 4*3 = 27 bytes
+        """
+        thrust_u16 = int(max(0, min(thrust_u16, 65535)))
+
+        pk = CRTPPacket()
+        pk.port = CRTPPort.COMMANDER_GENERIC
+        pk.channel = 0  # SET_SETPOINT_CHANNEL is 0
+
+        pk.data = struct.pack(
+            '<BfffHfff',
+            self.TYPE_ACC,
+            float(roll_deg), float(-pitch_deg), float(yaw_deg),
+            thrust_u16,
+            float(ax), float(ay), float(az)
+        )
+        self._cf.send_packet(pk)
 
     # ───── cleanup ────────────────────────────────────────────────────────────
     def close(self):

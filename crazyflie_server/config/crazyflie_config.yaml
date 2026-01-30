@@ -2,12 +2,15 @@ stabilizer_controller: 1 # 1 = PID, 2 = Mellinger, 3 = INDI, 4 = Brescianini
 stabilizer_estimator: 3  # 1 = Complementary filter, 2 = EKF, 3 = unscented Kalman filter
 
 use_body_rate: true # Send body rate reference instead of angle reference
+filt_cutoff: 10 # Cutoff frequency for the low-pass filter (in Hz)
+
+outerLoopActive: false # Select if the INDI position loop is active or not
 
 ID: 1 # Number of the Crazyflie to connect to (1-8)
 
-vel_LOG: true # Log velocity data
-angle_LOG: true # Log angle data
+vel_LOG: false # Log velocity data
+ang_LOG: false # Log angle data
 thrust_LOG: false # Log thrust data
 acc_LOG: false # Log acceleration data
 gyro_raw_LOG: false # Log raw gyro data
-gyro_LOG: true # Log gyro data
+gyro_LOG: false # Log gyro data
