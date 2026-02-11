@@ -5,16 +5,19 @@
     <arg name="use_joy" default="true" />
 
     <arg name="use_smc" default="1" />
-    <arg name="k_smc_roll" default="5000" />
-    <arg name="k_smc_pitch" default="5000" />
+    <arg name="is_PD_ASMC" default="0" />
+    <arg name="use_superTwist" default="1" />
+    
+    <arg name="k_smc_roll" default="0" />
+    <arg name="k_smc_pitch" default="0" />
     <arg name="k_smc_yaw" default="0" />
 
     <arg name="lambda_smc_roll" default="5" />
     <arg name="lambda_smc_pitch" default="5" />
     <arg name="lambda_smc_yaw" default="1" />
 
-    <arg name="sigma_smc_roll" default="0.5" />
-    <arg name="sigma_smc_pitch" default="0.5" />
+    <arg name="sigma_smc_roll" default="0.3" />
+    <arg name="sigma_smc_pitch" default="0.3" />
     <arg name="sigma_smc_yaw" default="1" />
 
     <arg name="k_phi" default="10.0"/>
@@ -25,13 +28,35 @@
     <arg name="sat_pitch" default="5"/>
     <arg name="sat_yaw" default="3"/>
 
-    <arg name="ki_smc_roll" default="5000" />
-    <arg name="ki_smc_pitch" default="5000" />
+    <arg name="ki_smc_roll" default="3000" />
+    <arg name="ki_smc_pitch" default="3000" />
     <arg name="ki_smc_yaw" default="0" />
 
-    <arg name="delta_smc_roll" default="0.5" />
-    <arg name="delta_smc_pitch" default="0.5" />
+    <arg name="delta_smc_roll" default="0.2" />
+    <arg name="delta_smc_pitch" default="0.2" />
     <arg name="delta_smc_yaw" default="0" />
+
+    <arg name="kj_smc_roll" default="300.0" />
+    <arg name="kj_smc_pitch" default="300.0" />
+    <arg name="kj_smc_yaw" default="0.0" />
+
+    <arg name="sigma_sdelta_smc_roll" default="0.5" />
+    <arg name="sigma_sdelta_smc_pitch" default="0.5" />
+    <arg name="sigma_sdelta_smc_yaw" default="1" />
+
+    <arg name="k_min_smc" default="2000" />
+    <arg name="k_max_smc" default="2000" />
+
+    <!-- Super Twist -->
+    <arg name="i_st_limit_smc" default="20000" />
+
+    <arg name="ki_smc_st_roll" default="3000" />
+    <arg name="ki_smc_st_pitch" default="3000" />
+    <arg name="ki_smc_st_yaw" default="0" />
+
+    <arg name="kj_smc_st_roll" default="5000.0" />
+    <arg name="kj_smc_st_pitch" default="5000.0" />
+    <arg name="kj_smc_st_yaw" default="0.0" />
     
     <!-- <group ns="$(arg namespace)"> -->
     <node pkg="crazyflie_server" type="crazyflie_server_smc.py" name="crazyflie_server_node" output="screen">
@@ -67,7 +92,29 @@
         <param name="delta_smc_pitch" value="$(arg delta_smc_pitch)" />
         <param name="delta_smc_yaw" value="$(arg delta_smc_yaw)" />
 
+        <param name="kj_smc_roll" value="$(arg kj_smc_roll)" />
+        <param name="kj_smc_pitch" value="$(arg kj_smc_pitch)" />
+        <param name="kj_smc_yaw" value="$(arg kj_smc_yaw)" />
+
+        <param name="sigma_sdelta_smc_roll" value="$(arg sigma_sdelta_smc_roll)" />
+        <param name="sigma_sdelta_smc_pitch" value="$(arg sigma_sdelta_smc_pitch)" />
+        <param name="sigma_sdelta_smc_yaw" value="$(arg sigma_sdelta_smc_yaw)" />
+
+        <param name="k_min_smc" value="$(arg k_min_smc)" />
+        <param name="k_max_smc" value="$(arg k_max_smc)" />
+
         <param name="use_smc" value="$(arg use_smc)" />
+        <param name="is_PD_ASMC" value="$(arg is_PD_ASMC)" />
+        <param name="use_superTwist" value="$(arg use_superTwist)" />
+        <param name="i_st_limit_smc" value="$(arg i_st_limit_smc)" />
+
+        <param name="ki_smc_st_roll" value="$(arg ki_smc_st_roll)" />
+        <param name="ki_smc_st_pitch" value="$(arg ki_smc_st_pitch)" />
+        <param name="ki_smc_st_yaw" value="$(arg ki_smc_st_yaw)" />
+
+        <param name="kj_smc_st_roll" value="$(arg kj_smc_st_roll)" />
+        <param name="kj_smc_st_pitch" value="$(arg kj_smc_st_pitch)" />
+        <param name="kj_smc_st_yaw" value="$(arg kj_smc_st_yaw)" />
     </node>
 
     <node pkg="crazyflie_copilot" type="crazyflie_copilot" name="crazyflie_copilot_node" if="$(arg use_copilot)" output="screen">
