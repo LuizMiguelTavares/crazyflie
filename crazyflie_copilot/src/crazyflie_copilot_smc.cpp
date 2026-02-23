@@ -5,6 +5,7 @@
  #include <condition_variable>
  #include <ros/ros.h>
  #include <geometry_msgs/Twist.h>
+ #include <geometry_msgs/Pose.h>
  #include <geometry_msgs/Vector3Stamped.h>
  #include <std_msgs/Bool.h>
  #include <std_srvs/Trigger.h>
@@ -13,7 +14,7 @@
  #include <atomic>
  #include <mutex>
  
- enum class Mode { LANDED, IDLE, TAKEOFF, HOVER, FLYING, LANDING, STOPPED_FLYING };
+ enum class Mode { LANDED, IDLE, TAKEOFF, HOVER, FLYING, LANDING, STOPPED_FLYING, ADAPTING };
  
  class HoverController
  {
@@ -62,18 +63,18 @@
      theta_des_ = 0.0; phi_des_ = 0.0;
  
      /* ─── I/O ────────────────────────────────────────────── */
-     range_sub_     = nh.subscribe("crazyflieZRange", 10,
+     range_sub_     = nh.subscribe("/cf5/crazyflieZRange", 10,
                                    &HoverController::zCb, this);
-     vel_sub_       = nh.subscribe("crazyflieVel",    10,
+     vel_sub_       = nh.subscribe("/cf5/crazyflieVel",    10,
                                    &HoverController::velCb, this);
-     att_sub_       = nh.subscribe("crazyflieAng",    10,
+     att_sub_       = nh.subscribe("/cf5/crazyflieAng",    10,
                                    &HoverController::attCb, this);
-     is_flying_sub_ = nh.subscribe("crazyflieIsFlying", 10,
+     is_flying_sub_ = nh.subscribe("/cf5/crazyflieIsFlying", 10,
                                    &HoverController::isFlyingCb, this);
  
-     cmd_pub_  = nh.advertise<geometry_msgs::Twist>("cmd_vel_smc", 10);
+     cmd_pub_  = nh.advertise<geometry_msgs::Pose>("/cf5/cmd_vel_smc", 10);
 
-     cmd_sub_ = nh.subscribe("cmd_vel", 10, &HoverController::cmdCb, this);
+    //  cmd_sub_ = nh.subscribe("cmd_vel", 10, &HoverController::cmdCb, this);
  
      take_srv_ = nh.advertiseService("takeoff",
                   &HoverController::takeoffSrv, this);
@@ -189,7 +190,7 @@
      const double dt = (now - prev_loop_time_).toSec();
      prev_loop_time_ = now;
  
-     geometry_msgs::Twist cmd;
+     geometry_msgs::Pose cmd;
  
      /* ---------- idle spool-up & trivial modes ------------- */
      if (mode_ == Mode::LANDED)  return;
@@ -197,11 +198,12 @@
      if (mode_ == Mode::IDLE) {
        if ((now - idle_start_).toSec() >= idle_time_) {
          mode_ = Mode::TAKEOFF;
+         //mode_ = Mode::ADAPTING;
          takeoff_start_ = now;
          z_init_ = z;
          state_cond_.notify_all();
        } else {
-         cmd.linear.z = idle_pwm_;  publish(cmd);  return;
+         cmd.orientation.w = idle_pwm_;  publish(cmd);  return;
        }
      }
  
@@ -211,7 +213,7 @@
      if (mode_ == Mode::TAKEOFF) {
        double alpha = std::min((now - takeoff_start_).toSec() / takeoff_dur_, 1.0);
        z_ref = z_init_ + alpha * (hover_alt_ - z_init_);
-       if (alpha >= 1.0) { mode_ = Mode::HOVER;  state_cond_.notify_all(); }
+       if (alpha == 1.0) { mode_ = Mode::HOVER;  state_cond_.notify_all(); }
      }
      else if (mode_ == Mode::LANDING) {
        double t_l = (now - land_start_).toSec();
@@ -225,7 +227,7 @@
      /* ---------- STOPPED_FLYING keep-alive ----------------- */
      if (mode_ == Mode::STOPPED_FLYING) {
        if (!flying) { mode_ = Mode::LANDED;  state_cond_.notify_all(); }
-       cmd.linear.z = 0.0;  cmd.angular.x = cmd.angular.y = 0.0;
+       cmd.orientation.w = 0.0;  cmd.position.x = cmd.position.y = 0.0;
        publish(cmd);  return;
      }
  
@@ -233,7 +235,8 @@
      double acc_z   = Kp_z_ * (z_ref - z) + Kd_z_ * (0.0 - dz) + g_;
      double acc_z_b = acc_z / std::max(0.1, std::abs(std::cos(theta) * std::cos(phi))); //// Analizar
      double pwm     = std::clamp(acc_z_b * pwm_per_g_, pwm_min_, pwm_max_);
-     cmd.linear.z   = pwm;
+     cmd.position.z = acc_z - g_;
+     cmd.orientation.w   = pwm;
  
      /* adaptive a_max in hover */
      if (mode_ == Mode::HOVER) {
@@ -253,26 +256,24 @@
      const double tilt_max = tilt_max_deg_ * M_PI / 180.0;
 
      if (theta_des_ == 0.0) {
-        double x_ddot_des = -(Kp_xy_ * x_dot + Kd_xy_ * x_ddot);
-        cmd.angular.y = std::clamp(x_ddot_des / g_, -tilt_max, tilt_max);
-     } else {
-        cmd.angular.y = std::clamp(theta_des_, -tilt_max, tilt_max);
+        double x_ddot_des = -(Kp_xy_ * x_dot);  // + Kd_xy_ * x_ddot);
+        cmd.position.x = x_ddot_des;
      }
 
      if (phi_des_ == 0.0) {
-        double y_ddot_des = -(Kp_xy_ * y_dot + Kd_xy_ * y_ddot);
-        cmd.angular.x = std::clamp(-y_ddot_des / g_, -tilt_max, tilt_max);
-     } else {
-        cmd.angular.x = std::clamp(phi_des_, -tilt_max, tilt_max);
+        double y_ddot_des = -(Kp_xy_ * y_dot); // + Kd_xy_ * y_ddot);
+        cmd.position.y = y_ddot_des;
      }
 
-    // ROS_INFO("cmd.angular.x: %f, cmd.angular.y: %f, cmd.linear.z: %f", cmd.angular.x, cmd.angular.y, cmd.linear.z);
+     cmd.orientation.z = 0;
+
+    // ROS_INFO("cmd.position.x: %f, cmd.position.y: %f, cmd.orientation.w: %f", cmd.position.x, cmd.position.y, cmd.orientation.w);
  
      publish(cmd);
    }
  
    /* ---------- helper ------------------------------------- */
-   void publish(const geometry_msgs::Twist& msg) { cmd_pub_.publish(msg); }
+   void publish(const geometry_msgs::Pose& msg) { cmd_pub_.publish(msg); }
  
    /* ========== ROS plumbing =================================*/
    ros::Subscriber range_sub_, vel_sub_, att_sub_, is_flying_sub_, cmd_sub_;

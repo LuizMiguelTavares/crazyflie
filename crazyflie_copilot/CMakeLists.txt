@@ -23,7 +23,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-add_executable(crazyflie_copilot src/crazyflie_copilot.cpp)
+add_executable(crazyflie_copilot src/crazyflie_copilot_smc.cpp)
 
 target_link_libraries(crazyflie_copilot
   ${catkin_LIBRARIES}

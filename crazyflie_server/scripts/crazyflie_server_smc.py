@@ -60,7 +60,7 @@ class CrazyflieServer:
         # Parâmetros SMC
         self.use_smc                = rospy.get_param("~use_smc", 0)
         self.is_PD_ASMC             = rospy.get_param("~is_PD_ASMC", 0)
-        self.use_superTwist         = rospy.get_param("~use_superTwist", 0)
+        self.smc_mode               = rospy.get_param("~smc_mode", 0) # -1 = Desligado, 0 = Asmc, 1 = Super Twist, 2 = Roy SMC
 
         self.k_smc_roll             = rospy.get_param("~k_smc_roll", 1)
         self.k_smc_pitch            = rospy.get_param("~k_smc_pitch", 1)
@@ -112,6 +112,13 @@ class CrazyflieServer:
         self.sat_pitch = rospy.get_param("~sat_pitch", None)
         self.sat_yaw = rospy.get_param("~sat_yaw", None)
 
+        # Roy smc
+        self.alpha0              = rospy.get_param("~alpha0", 1)
+        self.alpha1              = rospy.get_param("~alpha1", 1)
+
+        self.h0              = rospy.get_param("~h0", 1)
+        self.h1              = rospy.get_param("~h1", 1)
+
         self.ax = 0
         self.ay = 0
         self.az = 0
@@ -158,19 +165,22 @@ class CrazyflieServer:
 
         self.pub_is_flying       = rospy.Publisher(topic("crazyflieIsFlying"),        Bool,    queue_size=10)
         self.pub_can_fly         = rospy.Publisher(topic("crazyflieCanFly"),          Bool,    queue_size=10)
-        #self.pub_z_range         = rospy.Publisher(topic("crazyflieZRange"),         Vector3Stamped, queue_size=10)
+        # self.pub_z_range         = rospy.Publisher(topic("crazyflieZRange"),         Vector3Stamped, queue_size=10)
         self.pub_battery_voltage = rospy.Publisher(topic("crazyflieBatteryVoltage"),  Float32, queue_size=10)
         #self.pub_battery_level   = rospy.Publisher(topic("crazyflieBatteryLevel"),   Float32, queue_size=10)
         #self.pub_pos             = rospy.Publisher(topic("crazyfliePos"),            Vector3Stamped, queue_size=10)
         #self.pub_desired         = rospy.Publisher(topic("crazyflieDesired"),        Vector3Stamped, queue_size=10)
         self.pub_smc_out         = rospy.Publisher(topic("crazyflieSMCOut"),          Vector3Stamped, queue_size=10)
-        self.pub_pid_out         = rospy.Publisher(topic("crazyfliePIDOut"),          Vector3Stamped, queue_size=10)
+        # self.pub_pid_out         = rospy.Publisher(topic("crazyfliePIDOut"),          Vector3Stamped, queue_size=10)
         self.pub_pid_out_pitch   = rospy.Publisher(topic("crazyfliePIDOutPitch"),     Vector3Stamped, queue_size=10)
+        self.pub_pid_out_roll    = rospy.Publisher(topic("crazyfliePIDOutRoll"),     Vector3Stamped, queue_size=10)
         self.pub_s_smc           = rospy.Publisher(topic("crazyflieSSMC"),            Vector3Stamped, queue_size=10)
-        self.pub_k_smc           = rospy.Publisher(topic("crazyflieKSMC"),            Vector3Stamped, queue_size=10)
+        # self.pub_k_smc           = rospy.Publisher(topic("crazyflieKSMC"),            Vector3Stamped, queue_size=10)
         #self.pub_er_smc          = rospy.Publisher(topic("crazyflieErSMC"),           Vector3Stamped, queue_size=10)
-        self.pub_r_error         = rospy.Publisher(topic("crazyflieRError"),          Vector3Stamped, queue_size=10)
+        # self.pub_r_error         = rospy.Publisher(topic("crazyflieRError"),          Vector3Stamped, queue_size=10)
         self.pub_integ_st        = rospy.Publisher(topic("crazyflieIntegST"),         Vector3Stamped, queue_size=10)
+        # self.pub_h0        = rospy.Publisher(topic("crazyflieH0"),         Vector3Stamped, queue_size=10)
+        # self.pub_h1        = rospy.Publisher(topic("crazyflieH1"),         Vector3Stamped, queue_size=10)
         
         # ---- External pose (OptiTrack/VRPN) ----
         self._have_extpose = False
@@ -206,12 +216,19 @@ class CrazyflieServer:
         else:
             self._cf.param.set_value("smc.is_PD_ASMC", 0)
 
-        if self.use_superTwist:
-            self._cf.param.set_value("smc.use_superTwist", 1)
-        else:
-            self._cf.param.set_value("smc.use_superTwist", 0)   
-            
-             
+        self._cf.param.set_value("smc.smc_mode", self.smc_mode)      
+
+        self._cf.param.set_value("smc_rate.roll_alpha0_smc", self.alpha0)
+        self._cf.param.set_value("smc_rate.pitch_alpha0_smc", self.alpha0)
+
+        self._cf.param.set_value("smc_rate.roll_alpha1_smc", self.alpha1)
+        self._cf.param.set_value("smc_rate.pitch_alpha1_smc", self.alpha1)
+
+        self._cf.param.set_value("smc_rate.roll_h0_smc", self.h0)
+        self._cf.param.set_value("smc_rate.pitch_h0_smc", self.h0)
+
+        self._cf.param.set_value("smc_rate.roll_h1_smc", self.h1)
+        self._cf.param.set_value("smc_rate.pitch_h1_smc", self.h1)
         
         self._cf.param.set_value("pid_rate.roll_k_smc", self.k_smc_roll)
         self._cf.param.set_value("pid_rate.pitch_k_smc", self.k_smc_pitch)
@@ -229,7 +246,7 @@ class CrazyflieServer:
         self._cf.param.set_value("pid_rate.pitch_delta_smc", self.delta_smc_pitch)
         self._cf.param.set_value("pid_rate.yaw_delta_smc", self.delta_smc_yaw)
 
-        if self.use_superTwist:
+        if self.smc_mode:
             self._cf.param.set_value("pid_rate.roll_ki_smc", self.ki_smc_st_roll)
             self._cf.param.set_value("pid_rate.pitch_ki_smc", self.ki_smc_st_pitch)
             self._cf.param.set_value("pid_rate.yaw_ki_smc", self.ki_smc_st_yaw)
@@ -336,9 +353,9 @@ class CrazyflieServer:
         lg_bat.add_variable("pm.batteryLevel", "int8_t")
         start_log(lg_bat, self._cb_battery)
 
-        #lg_range = LogConfig("Range", 33)
-        #lg_range.add_variable("range.zrange", "float")
-        #start_log(lg_range, self._cb_range)
+        # lg_range = LogConfig("Range", 33)
+        # lg_range.add_variable("range.zrange", "float")
+        # start_log(lg_range, self._cb_range)
         
         lg_smc_out = LogConfig("Output SMC", 33)
         lg_smc_out.add_variable("pid_rate.roll_outSMC", "float")
@@ -346,11 +363,11 @@ class CrazyflieServer:
         lg_smc_out.add_variable("pid_rate.yaw_outSMC", "float")
         start_log(lg_smc_out, self._cb_smc_out)
 
-        lg_pid_out = LogConfig("Output PID", 33)
-        lg_pid_out.add_variable("pid_rate.roll_outPID", "float")
-        lg_pid_out.add_variable("pid_rate.pitch_outPID", "float")
-        lg_pid_out.add_variable("pid_rate.yaw_outPID", "float")
-        start_log(lg_pid_out, self._cb_pid_out)
+        # lg_pid_out = LogConfig("Output PID", 33)
+        # lg_pid_out.add_variable("pid_rate.roll_outPID", "float")
+        # lg_pid_out.add_variable("pid_rate.pitch_outPID", "float")
+        # lg_pid_out.add_variable("pid_rate.yaw_outPID", "float")
+        # start_log(lg_pid_out, self._cb_pid_out)
 
         lg_s_smc = LogConfig("s SMC", 33)
         lg_s_smc.add_variable("pid_rate.roll_s_smc", "float")
@@ -358,23 +375,28 @@ class CrazyflieServer:
         lg_s_smc.add_variable("pid_rate.yaw_s_smc", "float")
         start_log(lg_s_smc, self._cb_s_smc)
 
-        lg_pid_out_pitch = LogConfig("Out PID separate", 33)
+        lg_pid_out_roll = LogConfig("Out PID separate", 66)
+        lg_pid_out_roll.add_variable("pid_rate.roll_outP", "float")
+        lg_pid_out_roll.add_variable("pid_rate.roll_outI", "float")
+        lg_pid_out_roll.add_variable("pid_rate.roll_outD", "float")
+        start_log(lg_pid_out_roll, self._cb_pid_out_roll)
+
+        lg_pid_out_pitch = LogConfig("Out PID separate", 66)
         lg_pid_out_pitch.add_variable("pid_rate.pitch_outP", "float")
         lg_pid_out_pitch.add_variable("pid_rate.pitch_outI", "float")
         lg_pid_out_pitch.add_variable("pid_rate.pitch_outD", "float")
         start_log(lg_pid_out_pitch, self._cb_pid_out_pitch)
 
-        
-        lg_pid_out_pitch = LogConfig("K SMC", 33)
-        lg_pid_out_pitch.add_variable("pid_rate.roll_k_smc", "float")
-        lg_pid_out_pitch.add_variable("pid_rate.pitch_k_smc", "float")
-        lg_pid_out_pitch.add_variable("pid_rate.yaw_k_smc", "float")
-        start_log(lg_pid_out_pitch, self._cb_k_smc)
+        # lg_pid_out_pitch = LogConfig("K SMC", 33)
+        # lg_pid_out_pitch.add_variable("pid_rate.roll_k_smc", "float")
+        # lg_pid_out_pitch.add_variable("pid_rate.pitch_k_smc", "float")
+        # lg_pid_out_pitch.add_variable("pid_rate.yaw_k_smc", "float")
+        # start_log(lg_pid_out_pitch, self._cb_k_smc)
 
-        lg_e_error = LogConfig("R error", 33)
-        lg_e_error.add_variable("smc.R13_error", "float")
-        lg_e_error.add_variable("smc.R23_error", "float")
-        start_log(lg_e_error, self._r_error_smc)
+        # lg_e_error = LogConfig("R error", 33)
+        # lg_e_error.add_variable("smc.R13_error", "float")
+        # lg_e_error.add_variable("smc.R23_error", "float")
+        # start_log(lg_e_error, self._r_error_smc)
 
         # lg_er_smc = LogConfig("Er SMC", 33)
         # lg_er_smc.add_variable("smc.er_phi", "float")
@@ -392,6 +414,13 @@ class CrazyflieServer:
         lg_integ_st.add_variable("pid_rate.roll_integ_st", "float")
         lg_integ_st.add_variable("pid_rate.pitch_integ_st", "float")
         start_log(lg_integ_st, self._integ_st)
+
+        # lg_h0_h1 = LogConfig("h0", 33)
+        # lg_h0_h1.add_variable("smc_rate.roll_h0_smc", "float")
+        # lg_h0_h1.add_variable("smc_rate.pitch_h0_smc", "float")
+        # lg_h0_h1.add_variable("smc_rate.roll_h1_smc", "float")
+        # lg_h0_h1.add_variable("smc_rate.pitch_h1_smc", "float")
+        # start_log(lg_h0_h1, self._h0_h1)
         
         if self.control_time_us_LOG:
             lg_control_time = LogConfig("Control Time us", 100)
@@ -507,6 +536,16 @@ class CrazyflieServer:
         pid_out.vector.z = data["pid_rate.pitch_outD"]
         self.pub_pid_out_pitch.publish(pid_out)
 
+    def _cb_pid_out_roll(self, ts, data, _):
+        self._once("out_pid_", "Out PID roll log started")
+
+        pid_out = Vector3Stamped()
+        pid_out.header.stamp = rospy.Time.now()
+        pid_out.vector.x = data["pid_rate.roll_outP"]
+        pid_out.vector.y = data["pid_rate.roll_outI"]
+        pid_out.vector.z = data["pid_rate.roll_outD"]
+        self.pub_pid_out_roll.publish(pid_out)
+
     def _cb_k_smc(self, ts, data, _):
         self._once("k_smc", "K smc log started")
 
@@ -534,8 +573,22 @@ class CrazyflieServer:
         integ_st.vector.x = data["pid_rate.roll_integ_st"]*self.kj_smc_st_roll
         integ_st.vector.y = data["pid_rate.pitch_integ_st"]*self.kj_smc_st_pitch
         self.pub_integ_st.publish(integ_st)
+
+    def _h0_h1(self, ts, data, _):
+        self._once("h0 h1", "h0 h1 log started")
+
+        h0 = Vector3Stamped()
+        h0.header.stamp = rospy.Time.now()
+        h0.vector.x = data["smc_rate.roll_h0_smc"]
+        h0.vector.y = data["smc_rate.pitch_h0_smc"]
+        self.pub_h0.publish(h0)
+
+        h1 = Vector3Stamped()
+        h1.header.stamp = rospy.Time.now()
+        h1.vector.x = data["smc_rate.roll_h1_smc"]
+        h1.vector.y = data["smc_rate.pitch_h1_smc"]
+        self.pub_h1.publish(h1)
     
-        
     def _cb_s_smc(self, ts, data, _):
         self._once("s_smc", "Non saturated s SMC log started")
 

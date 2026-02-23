@@ -32,7 +32,7 @@
      pnh.param("kd_z",  Kd_z_,  5.0);
      pnh.param("kp_xy", Kp_xy_, 2.0);
      pnh.param("kd_xy", Kd_xy_, 2.0);
-     pnh.param("tilt_max_deg", tilt_max_deg_, 10.0);
+     pnh.param("tilt_max_deg", tilt_max_deg_, 60.0);
  
      pnh.param("a_max",    a_max_,    16.5);
      pnh.param("kp_a_max", kp_a_max_,  6.0);
@@ -73,8 +73,7 @@
  
      cmd_pub_  = nh.advertise<geometry_msgs::Twist>("copilot_cmd_vel", 10);
 
-     cmd_sub_ = nh.subscribe("cmd_vel", 10,
-                                   &HoverController::cmdCb, this);
+     cmd_sub_ = nh.subscribe("cmd_vel", 10, &HoverController::cmdCb, this);
  
      take_srv_ = nh.advertiseService("takeoff",
                   &HoverController::takeoffSrv, this);
@@ -232,7 +231,7 @@
  
      /* ---------- Altitude PD + thrust ---------------------- */
      double acc_z   = Kp_z_ * (z_ref - z) + Kd_z_ * (0.0 - dz) + g_;
-     double acc_z_b = acc_z / std::max(0.1, std::abs(std::cos(theta) * std::cos(phi)));
+     double acc_z_b = acc_z / std::max(0.1, std::abs(std::cos(theta) * std::cos(phi))); //// Analizar
      double pwm     = std::clamp(acc_z_b * pwm_per_g_, pwm_min_, pwm_max_);
      cmd.linear.z   = pwm;
  
