@@ -30,6 +30,7 @@ def id_to_uri(cf_id: int) -> str:
         6: "radio://0/20/2M/E7E7E7E706",
         7: "radio://0/20/2M/E7E7E7E707",
         8: "radio://0/50/2M/E7E7E7E708",
+        9: "radio://0/80/2M/E7E7E7E709",
     }
     if cf_id not in table:
         raise ValueError(f"Invalid Crazyflie ID {cf_id}")
@@ -527,7 +528,7 @@ class CrazyflieServer:
         self.pub_pid_out.publish(pid_out)
 
     def _cb_pid_out_pitch(self, ts, data, _):
-        self._once("out_pid_", "Out PID pitch log started")
+        self._once("out_pid_pitch", "Out PID pitch log started")
 
         pid_out = Vector3Stamped()
         pid_out.header.stamp = rospy.Time.now()
@@ -537,7 +538,7 @@ class CrazyflieServer:
         self.pub_pid_out_pitch.publish(pid_out)
 
     def _cb_pid_out_roll(self, ts, data, _):
-        self._once("out_pid_", "Out PID roll log started")
+        self._once("out_pid_roll", "Out PID roll log started")
 
         pid_out = Vector3Stamped()
         pid_out.header.stamp = rospy.Time.now()

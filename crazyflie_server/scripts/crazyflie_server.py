@@ -25,6 +25,7 @@ def id_to_uri(cf_id: int) -> str:
         6: "radio://0/20/2M/E7E7E7E706",
         7: "radio://0/20/2M/E7E7E7E707",
         8: "radio://0/50/2M/E7E7E7E708",
+        9: "radio://0/80/2M/E7E7E7E709",
     }
     if cf_id not in table:
         raise ValueError(f"Invalid Crazyflie ID {cf_id}")
@@ -61,14 +62,15 @@ class CrazyflieServer:
         # ---------- Crazyflie link ----------
         cflib.crtp.init_drivers(enable_debug_driver=False)
         self._cf = Crazyflie()
-        uri = uri_helper.uri_from_env(default=id_to_uri(cf_id))
-        self._cf.open_link(uri)
 
         # callbacks
         self._cf.connected     .add_callback(self._connected)
         self._cf.disconnected  .add_callback(self._disconnected)
         self._cf.connection_failed.add_callback(self._conn_failed)
         self._cf.connection_lost  .add_callback(self._conn_lost)
+
+        uri = uri_helper.uri_from_env(default=id_to_uri(cf_id))
+        self._cf.open_link(uri)
 
         # unlock startup thrust protection
         self._cf.commander.send_setpoint(0, 0, 0, 0)

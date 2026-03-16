@@ -5,10 +5,10 @@
     <arg name="use_joy" default="true" />
 
     <arg name="use_smc" default="1" />
-    <arg name="is_PD_ASMC" default="1" />
+    <arg name="is_PD_ASMC" default="0" />
 
     <!-- # SMC MODE -> 5 = Desligado, 0 = Asmc, 1 = Super Twist, 2 =  Roy SMC -->
-    <arg name="smc_mode" default="1" />
+    <arg name="smc_mode" default="5" />
     
     <arg name="k_smc_roll" default="0" />
     <arg name="k_smc_pitch" default="0" />
