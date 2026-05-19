@@ -322,6 +322,17 @@ class CrazyflieServer:
                 print("Sending attitude setpoints.")
         except Exception as e:
             rospy.logwarn(f"[cf{self.cf_id}] param set failed: {e}")
+        
+        # IMPORTANTE para brushless / plataformas com arming manual
+        try:
+            time.sleep(0.2)
+            self._cf.platform.send_arming_request(True)
+            rospy.loginfo("Arming request sent")
+            time.sleep(0.5)
+        except Exception as e:
+            rospy.logerr(f"Error sending arming request: {e}")
+
+        self._setup_logs()
 
         # configure logs
         self._setup_logs()
@@ -571,8 +582,8 @@ class CrazyflieServer:
 
         integ_st = Vector3Stamped()
         integ_st.header.stamp = rospy.Time.now()
-        integ_st.vector.x = data["pid_rate.roll_integ_st"]*self.kj_smc_st_roll
-        integ_st.vector.y = data["pid_rate.pitch_integ_st"]*self.kj_smc_st_pitch
+        integ_st.vector.x = data["pid_rate.roll_integ_st"]
+        integ_st.vector.y = data["pid_rate.pitch_integ_st"]
         self.pub_integ_st.publish(integ_st)
 
     def _h0_h1(self, ts, data, _):

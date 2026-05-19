@@ -150,6 +150,17 @@ class CrazyflieServer:
         except Exception as e:
             rospy.logwarn(f"[cf{self.cf_id}] param set failed: {e}")
 
+        # IMPORTANTE para brushless / plataformas com arming manual
+        try:
+            time.sleep(0.2)
+            self._cf.platform.send_arming_request(True)
+            rospy.loginfo("Arming request sent")
+            time.sleep(0.5)
+        except Exception as e:
+            rospy.logerr(f"Error sending arming request: {e}")
+
+        self._setup_logs()
+        
         # configure logs
         self._setup_logs()
 
